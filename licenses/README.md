@@ -1,0 +1,20 @@
+# Third-party components in DroidHub
+
+DroidHub's own code is covered by the MIT license in the project root. Each bundled component retains its own license.
+
+| Component | Version and source | Notices in the app |
+|---|---|---|
+| Android Debug Bridge (ADB) | 37.0.1, extracted from [Google SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) for macOS. See [AOSP ADB sources](https://android.googlesource.com/platform/packages/modules/adb/). | `ADB-NOTICE.txt`, copied from the Google archive |
+| scrcpy client and server | [5.0.1](https://github.com/Genymobile/scrcpy/releases/tag/v5.0.1), including its original resources | `scrcpy-LICENSE.txt` (Apache-2.0) |
+| FFmpeg | [9.0.2 source archive](https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz), built with the upstream [configure script](https://github.com/Genymobile/scrcpy/blob/v5.0.1/app/deps/ffmpeg.sh) | `FFmpeg-LGPL-2.1.txt` |
+| SDL | [3.4.18](https://github.com/libsdl-org/SDL/releases/tag/release-3.4.18) | `SDL-LICENSE.txt`, `SDL-hidapi-LICENSE.txt`, `SDL-yuv2rgb-LICENSE.txt` |
+| libusb | [1.0.30](https://github.com/libusb/libusb/releases/tag/v1.0.30) | `libusb-COPYING.txt` (LGPL-2.1) |
+| dav1d | [1.5.4 source archive](https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz) | `dav1d-COPYING.txt` (BSD-2-Clause) |
+
+The app bundle stores these notices in `Contents/Resources/ThirdPartyNotices`. DroidHub extracts ADB for the target architecture and applies ad-hoc signatures to the macOS executables. The [scrcpy macOS build recipe](https://github.com/Genymobile/scrcpy/blob/v5.0.1/release/build_macos.sh) links its media and USB dependencies statically.
+
+## Distribution review for 0.3.114
+
+- **ADB.** After removing signatures from test copies, the bundled executable matched the arm64 slice of Google's Platform-Tools 37.0.1 byte for byte, and the bundled notice matched Google's aggregate notice. Sections 3.4 and 3.5 of the Android SDK terms distinguish SDK redistribution restrictions from the licenses governing open-source components. The executable contains statically linked libusb identifying itself as 1.0.29.11982, while the [upstream 1.0.29 tag](https://github.com/libusb/libusb/blob/v1.0.29/libusb/version_nano.h) identifies build 11953. Google's aggregate notice does not name libusb. This preview build includes ADB. Verification of the corresponding source and relinking materials for this exact ADB build is still pending. [Android SDK terms](https://developer.android.com/studio/terms) · [Platform-Tools downloads](https://developer.android.com/tools/releases/platform-tools)
+- **scrcpy.** Keep the Apache-2.0 license and applicable notices with the client and server. The official v5.0.1 macOS build statically links FFmpeg and libusb, and DroidHub's executable has no dynamic dependency on either library. The LGPL 2.1 §6 source route requires the corresponding library source, including applicable changes, and enough of the linked program in source or object form for recipients to modify the libraries and relink the executable. For a download, §6(d) allows equivalent access to those materials from the same place. [Apache-2.0 §4](https://www.apache.org/licenses/LICENSE-2.0#redistribution) · [Upstream macOS build](https://github.com/Genymobile/scrcpy/blob/v5.0.1/release/build_macos.sh) · [LGPL 2.1 §6](FFmpeg-LGPL-2.1.txt) · [FFmpeg distribution guidance](https://ffmpeg.org/legal.html)
+- **Available materials.** The local `DroidHub-0.3.114-scrcpy-source-materials.tar` contains versioned source archives for scrcpy, FFmpeg, SDL, libusb and dav1d, with SHA‑256 checksums. An Apple silicon test rebuilt the client from these archives, then modified FFmpeg and libusb and verified that both replacement libraries were used. The rebuilt client mirrored and recorded a Xiaomi 15 over Wi-Fi using the original scrcpy server. This validates relinking on the test Mac; it does not establish binary identity with the upstream client or compatibility with the oldest supported macOS. Include the tested instructions with the corresponding sources alongside the binary and explain how to use a relinked client.
