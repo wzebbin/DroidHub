@@ -6,13 +6,15 @@
 
 ## 下载与安装
 
-**0.3.114 开发预览版**面向 Apple 芯片 Mac（arm64）。最低构建目标为 macOS 13，macOS 13 实机兼容性尚待验证。 [验证记录](docs/VALIDATION.md)
+**[下载 DroidHub 0.3.114 开发预览版](https://github.com/wzebbin/DroidHub/releases/tag/v0.3.114)** · Apple 芯片 Mac（arm64）
 
-预览版发布后，可从 [v0.3.114 下载页](https://github.com/wzebbin/DroidHub/releases/tag/v0.3.114) 手动下载。如果页面还没有安装包，可以[从源码构建](#从源码构建)。
+安装包内置 ADB 和 scrcpy，手机无需安装配套应用。最低构建目标为 macOS 13，该版本的实机兼容性尚待验证。 [验证记录](docs/VALIDATION.md)
 
-1. 下载 `DroidHub-0.3.114-macOS-arm64.zip` 和同名 `.zip.sha256`，放在同一个目录。在该目录运行 `shasum -a 256 -c DroidHub-0.3.114-macOS-arm64.zip.sha256` 校验。
-2. 解压 ZIP，将 `DroidHub.app` 拖入「应用程序」。ADB 和 scrcpy 随包提供，无需在手机上安装 DroidHub。
-3. 预览包使用临时签名，未做 Apple 公证，macOS 可能阻止首次打开。请确认下载来源和 SHA‑256。若系统提供「系统设置 → 隐私与安全性 → 仍要打开」，可在该处处理。
+1. 从 Release 页下载 `DroidHub-0.3.114-macOS-arm64.zip` 和同名 `.zip.sha256`，放在同一目录。在该目录运行 `shasum -a 256 -c DroidHub-0.3.114-macOS-arm64.zip.sha256` 校验。
+2. 解压 ZIP，将 `DroidHub.app` 拖入「应用程序」。
+3. 首次打开时，macOS 可能会拦截未经 Apple 公证的预览包。确认下载来源和校验结果后，如果「系统设置 → 隐私与安全性」提供「仍要打开」，可从那里打开。
+
+也可以[从源码构建](#从源码构建)。
 
 ## 首次连接
 
