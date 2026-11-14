@@ -2,7 +2,7 @@
 
 原生 macOS 工具，通过 USB 或 Wi‑Fi 管理 Android 手机。支持文件传输、照片和视频、应用管理、设备信息、投屏、截图和录屏。
 
-**[下载 DroidHub 0.3.115 开发预览版](https://github.com/wzebbin/DroidHub/releases/tag/v0.3.115)** · 适用于 Apple 芯片 Mac（arm64）。最低构建目标为 macOS 13，macOS 13 实机兼容性尚待验证。 [验证记录](docs/VALIDATION.md)
+**[下载 DroidHub 最新正式版](https://github.com/wzebbin/DroidHub/releases/latest)** · 适用于 Apple 芯片 Mac（arm64）。最低构建目标为 macOS 13，macOS 13 实机兼容性尚待验证。 [验证记录](docs/VALIDATION.md)
 
 ![DroidHub 浅色模式下的文件管理主界面，显示演示文件和传输队列](assets/screenshots/file-manager.png)
 
@@ -10,11 +10,13 @@
 
 安装包内置 ADB 和 scrcpy，手机无需安装配套应用。
 
-1. 从 Release 页下载 `DroidHub-0.3.115-macOS-arm64.zip` 和同名 `.zip.sha256`，放在同一目录。在该目录运行 `shasum -a 256 -c DroidHub-0.3.115-macOS-arm64.zip.sha256` 校验。
+1. 从 Release 页下载 Apple 芯片版 ZIP 和对应的 `.zip.sha256`，放在同一目录。以 0.3.117 为例，在该目录运行 `shasum -a 256 -c DroidHub-0.3.117-macOS-arm64.zip.sha256` 校验。
 2. 解压 ZIP，将 `DroidHub.app` 拖入「应用程序」。
-3. 首次打开时，macOS 可能会拦截未经 Apple 公证的预览包。确认下载来源和校验结果后，如果「系统设置 → 隐私与安全性」提供「仍要打开」，可从那里打开。
+3. 安装包使用 ad-hoc 签名，未经 Apple 公证，macOS 首次打开时可能拦截。确认下载来源和校验结果后，如果「系统设置 → 隐私与安全性」提供「仍要打开」，可从那里打开。
 
-开发预览版请从 GitHub Releases 手动下载更新。先完成或暂停传输，退出 DroidHub，再替换「应用程序」中的旧版本。应用内「检查更新」查询正式版本。 [GitHub Releases](https://github.com/wzebbin/DroidHub/releases)
+从 0.3.117 起，DroidHub 默认在主窗口打开后后台检查正式版，每 5 小时最多自动检查一次。发现新版时会提示，并提供发布页入口。可在「设置 → 软件更新」关闭启动检查或开启「检查开发预览版」。手动检查随时可用。
+
+安装更新时，先完成或暂停传输并退出 DroidHub，再从 GitHub Releases 下载并替换「应用程序」中的旧版。 [GitHub Releases](https://github.com/wzebbin/DroidHub/releases)
 
 也可以[从源码构建](#从源码构建)。
 
@@ -29,12 +31,12 @@
 ## 主要功能
 
 - 「设备」查看电量、存储和系统信息。点「开始投屏」打开独立窗口。连接手机后也可直接截图或录屏，录屏支持实时计时，停止后保存为 MP4。当前投屏和录屏只处理画面。
-- 「全部文件」支持 Finder 拖入、文件和文件夹双向传输、批量移动和重命名、回收站和恢复。
+- 「全部文件」支持 Finder 拖入、文件和文件夹双向传输、批量移动和重命名、回收站和恢复。常用目录可收藏到侧栏，同一台手机通过 USB 或 Wi‑Fi 连接时共用收藏。在 DroidHub 内移动或重命名目录后，相关收藏会随路径更新。
 - 「传输队列」支持暂停、继续和取消，手动暂停状态在重启后保留。退出或断线后，重新连接原手机并点「重试未完成任务」。也可在「设置 → 文件传输」开启「重连后自动继续」，恢复因断线中断的任务。文件夹任务显示已完成的文件数和当前文件名。
 - 上传和下载均支持 64 MiB 起的文件断点续传。重试文件夹任务时，校验一致的文件会跳过，较小的未完成文件会从头传，空目录会保留。整个目录的结构和逐文件 SHA-256 校验通过后才保存。
 - 「照片」支持日期分组、相册、搜索、照片预览、视频播放和导出原文件。
 - 「应用管理」支持按应用名称或包名搜索，查看版本、大小，安装、启动、卸载和导出安装包。拆分应用导出为包含各 APK 的 ZIP，应用数据不包含在内。
-- 在「设置」选择浅色、深色或跟随系统，即时切换简体中文和 English，并可设置关闭主窗口时直接退出、隐藏窗口或每次询问。
+- 在「设置」选择浅色、深色或跟随系统，即时切换简体中文和英语，并可设置关闭主窗口时直接退出、隐藏窗口或每次询问。「关于软件」显示版本和构建号，也可以手动检查更新。
 
 ![DroidHub 浅色模式下的设备页，演示设备正在录屏，停止录屏按钮旁显示计时](assets/screenshots/device-recording.png)
 
@@ -53,7 +55,7 @@ dist/        本地构建产物（不提交）
 
 ## 从源码构建
 
-0.3.115 在 Apple 芯片 Mac 上使用 Xcode 27.2（Swift 6.4.2）验证。打包还需要 Android NDK 28.2.13676358、Android SDK Platform 34、Build Tools 36.0.0 和 JDK 17 或更新版本。Android SDK 默认位于 `~/Library/Android/sdk`，可用 `ANDROID_SDK_ROOT` 指定其他位置。可用 `ANDROID_NDK_HOME` 指定 NDK 目录，用 `JAVA_HOME` 指定 JDK 目录。
+0.3.117 在 Apple 芯片 Mac 上使用 Xcode 27.2（Swift 6.4.2）构建。打包还需要 Android NDK 28.2.13676358、Android SDK Platform 34、Build Tools 36.0.0 和 JDK 17 或更新版本。Android SDK 默认位于 `~/Library/Android/sdk`，可用 `ANDROID_SDK_ROOT` 指定其他位置。可用 `ANDROID_NDK_HOME` 指定 NDK 目录，用 `JAVA_HOME` 指定 JDK 目录。
 
 可以克隆仓库，也可以在 GitHub 仓库页面下载源码 ZIP 并解压。首次打包需要联网获取 ADB 和 scrcpy。
 
@@ -77,7 +79,7 @@ open dist/DroidHub.app
 ## 手动发布
 
 1. 在 Apple 芯片 Mac 上运行 `./scripts/test-macos.sh` 和 `./scripts/build-macos.sh --release`。验收 `dist/` 下的 ZIP 和 SHA‑256。
-2. 根据第三方声明核对随包组件和对应分发材料。预发布草稿使用与构建对应的标签（如 `v0.3.115`），附上安装包、校验文件、项目许可证和适用的第三方材料。scrcpy 源码附件包含对应源码、重链脚本和使用说明，和安装包放在同一 Release。 [第三方声明](licenses/README.md) · [GitHub Releases](https://github.com/wzebbin/DroidHub/releases)
+2. 根据第三方声明核对随包组件和对应分发材料。GitHub Release 使用与构建对应的标签（如 `v0.3.117`），附上安装包、校验文件和适用的第三方材料。scrcpy 源码附件包含对应源码、重链脚本和使用说明，和安装包放在同一 Release。 [项目许可证](LICENSE) · [第三方声明](licenses/README.md) · [GitHub Releases](https://github.com/wzebbin/DroidHub/releases)
 
 ## 反馈
 
