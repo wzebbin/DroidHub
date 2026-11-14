@@ -27,7 +27,6 @@ struct DeviceLibraryView: View {
             }
             deviceContent
         }
-        .task(id: model.online ? model.deviceSession : nil) { model.loadDeviceInfo() }
     }
 
     @ViewBuilder private var deviceContent: some View {

@@ -74,7 +74,6 @@
 "下一个视频" = "Next Video";
 "下一张照片" = "Next Photo";
 "下载" = "Download";
-"下载 {1} 项" = "Download {1} Item(s)";
 "下载 {1} 项…" = "Download {1} Item(s)…";
 "下载临时文件不可用。" = "The temporary download file is unavailable.";
 "下载临时目录不可用。" = "The temporary download folder is unavailable.";
@@ -245,7 +244,6 @@
 "安装包已导出" = "APK exported";
 "完成" = "Done";
 "完成选择" = "Done Selecting";
-"导入" = "Import";
 "导出" = "Export";
 "导出 {1} {2}" = "Export {1} {2}";
 "导出 {1} {2} · {3}" = "Export {1} {2} · {3}";
@@ -400,6 +398,10 @@
 "手机连接中断。重新连接同一台手机后重试。" = "Phone disconnected. Reconnect the same phone to retry.";
 "打开" = "Open";
 "打开 GitHub 发布页" = "Open GitHub Releases";
+"关于软件" = "About";
+"GitHub 项目主页" = "GitHub Project";
+"版本 {1}" = "Version {1}";
+"构建号 {1}" = "Build {1}";
 "打开 Mac 文件夹" = "Open Mac Folder";
 "打开回收站" = "Open Trash";
 "打开文件夹" = "Open Folder";
@@ -562,6 +564,13 @@
 "核对设备身份" = "Verify Device Identity";
 "根目录" = "Root Folder";
 "检查更新…" = "Check for Updates…";
+"启动时检查更新" = "Check for Updates on Launch";
+"软件更新" = "Software Updates";
+"检查开发预览版" = "Check for Development Previews";
+"使用「检查更新」时也查找开发预览版。" = "Include development previews when checking for updates.";
+"暂无正式版本" = "No Stable Release Available";
+"可在「设置 → 软件更新」开启「检查开发预览版」。" = "You can enable Check for Development Previews in Settings → Software Updates.";
+"DroidHub {1} 开发预览版已发布" = "DroidHub {1} Development Preview Is Available";
 "正在{1}" = "In progress: {1}";
 "正在下载视频到 Mac" = "Downloading video to Mac";
 "正在保存截图…" = "Saving screenshot…";
@@ -654,6 +663,12 @@
 "目录中已有同名项目" = "A matching name already exists in this folder";
 "目录中已有同名项目。" = "An item with this name already exists in this folder.";
 "目录导航" = "Folder Navigation";
+"目录收藏" = "Favorite Folders";
+"收藏当前目录" = "Favorite Current Folder";
+"移除此目录收藏" = "Remove Current Folder from Favorites";
+"无法读取「{1}」。当前路径为「{2}」，重新读取目录后才能写入。{3}" = "Could not read “{1}”. The current path is “{2}”. Reload a folder before making changes. {3}";
+"刷新当前目录" = "Reload Current Folder";
+"移除收藏" = "Remove Favorite";
 "目标 Android" = "Target Android";
 "目标位置已有同名文件。请刷新目录后重新选择是否替换。" = "A file with this name already exists. Refresh the folder and choose whether to replace it.";
 "目标位置已有同名文件夹。请选择其他目录。" = "A folder with this name already exists. Choose a different folder.";
@@ -759,7 +774,6 @@
 "请填写手机「无线调试」主页当前显示的 IP 地址和端口。" = "Enter the IP address and port shown on the phone's Wireless debugging screen.";
 "请将安装包保存为 .{1} 文件。" = "Save the APK package as a .{1} file.";
 "请检查 USB 线缆或手机的无线调试状态，然后重新连接。" = "Check the USB cable or the phone's Wireless debugging settings, then reconnect.";
-"请确认 GitHub 发布仓库已公开，并且已有正式 Release。" = "Check that the GitHub release repository is public and has a published release.";
 "请解锁手机，在弹窗中允许 USB 调试。" = "Unlock the phone and allow USB debugging when prompted.";
 "请输入有效名称。名称不能包含斜杠，长度最多为 255 字节。" = "Enter a valid name without slashes, up to 255 bytes.";
 "请输入绝对路径。" = "Enter an absolute path.";
@@ -870,6 +884,11 @@
 "正在保存录屏…" = "Saving recording…";
 "录屏已保存" = "Recording Saved";
 "录屏失败。{1}" = "Recording failed. {1}";
+"录屏仍在进行" = "Screen Recording Is in Progress";
+"隐藏窗口后继续录制。退出前会停止录屏并保存 MP4。" = "Recording continues while the window is hidden. Quitting stops the recording and saves the MP4.";
+"退出前会停止录屏并保存 MP4。" = "DroidHub will stop recording and save the MP4 before quitting.";
+"停止录屏并退出" = "Stop Recording and Quit";
+"录屏尚未启动，没有可保存的视频。" = "The recording had not started. There is no video to save.";
 "手机没有返回可播放的录屏。" = "The phone did not return a playable recording.";
 "手机录屏 {1}-{2}.mp4" = "Phone Recording {1}-{2}.mp4";
 "无法打开录屏。" = "Could not open the recording.";

@@ -96,6 +96,13 @@ struct PhoneFolderNavigation: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
 
+            let isFavorite = model.favoriteFolders.contains(model.path)
+            QuietIconButton(symbol: isFavorite ? "star.fill" : "star",
+                            help: l10n.text(isFavorite ? "移除此目录收藏" : "收藏当前目录")) {
+                model.toggleCurrentFolderFavorite()
+            }
+            .disabled(!model.canFavoriteCurrentFolder)
+
             QuietIconButton(symbol: "arrow.clockwise", help: l10n.text("刷新文件夹")) { model.loadFiles() }
                 .disabled(!model.online || model.busy)
                 .keyboardShortcut("r", modifiers: .command)
@@ -219,11 +226,21 @@ struct FileLibraryView: View {
 
     private var fileContent: some View {
         VStack(spacing: 0) {
-            if model.online, let failure = model.directoryFailure, !model.files.isEmpty {
-                HStack(spacing: 12) {
-                    WorkspaceNotice(message: l10n.text("无法读取文件夹「{1}」。{2}", (failure.path as NSString).lastPathComponent, failure.message), isError: true)
-                    ToolbarAction(title: l10n.text("重试"), symbol: "arrow.clockwise") { model.loadFiles(failure.path) }
-                        .disabled(model.busy)
+            if model.online, let failure = model.directoryFailure {
+                VStack(alignment: .leading, spacing: 6) {
+                    WorkspaceNotice(message: l10n.text("无法读取「{1}」。当前路径为「{2}」，重新读取目录后才能写入。{3}",
+                                                         failure.path, model.path, failure.message), isError: true)
+                    HStack(spacing: 12) {
+                        ToolbarAction(title: l10n.text("重试"), symbol: "arrow.clockwise") { model.loadFiles(failure.path) }
+                            .disabled(model.busy)
+                        if failure.path != model.path {
+                            ToolbarAction(title: l10n.text("刷新当前目录"), symbol: "arrow.clockwise") { model.loadFiles() }
+                                .disabled(model.busy)
+                        }
+                        if model.favoriteFolders.contains(failure.path) {
+                            Button(l10n.text("移除收藏")) { model.removeFolderFavorite(failure.path) }
+                        }
+                    }
                 }.padding(.horizontal, HubStyle.workspaceInset).padding(.top, 8)
             }
             if !model.online {
@@ -231,13 +248,8 @@ struct FileLibraryView: View {
                     ToolbarAction(title: l10n.text("连接设备"), symbol: "link", prominent: true, action: connect)
                 }
             } else if files.isEmpty {
-                if let failure = model.directoryFailure, model.files.isEmpty {
-                    LibraryStateView(symbol: "exclamationmark.circle", title: l10n.text("无法读取文件夹"),
-                                     detail: failure.message, isError: true) {
-                        ToolbarAction(title: l10n.text("重新加载"), symbol: "arrow.clockwise", prominent: true) {
-                            model.loadFiles(failure.path)
-                        }.disabled(model.busy)
-                    }
+                if model.directoryFailure != nil {
+                    Spacer()
                 } else if model.isLoadingDirectory {
                     LibraryStateView(symbol: nil, title: l10n.text("正在读取文件夹…")) { EmptyView() }
                 } else if !model.hasLoadedDirectory {

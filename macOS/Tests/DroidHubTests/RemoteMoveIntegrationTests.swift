@@ -57,7 +57,7 @@ final class RemoteMoveIntegrationTests: XCTestCase {
             func connect() async throws {
                 await model.refreshDevices()
                 model.selectedSerial = serial
-                try await wait { model.transfers.connection?.serial == serial && model.uploadTarget != nil }
+                try await wait { model.transfers.connection?.serial == serial }
             }
             func open(_ directory: String) async throws {
                 model.loadFiles(directory)
@@ -144,8 +144,18 @@ final class RemoteMoveIntegrationTests: XCTestCase {
             XCTAssertFalse(model.files.contains { $0.name == fileName })
             let contents = try await phone("cat \(Shell.quote(bFile))")
             XCTAssertEqual(contents, payload)
+            try await open(aFolder)
+            model.toggleCurrentFolderFavorite()
+            try await open(aFolder + "/nested")
+            model.toggleCurrentFolderFavorite()
+            try await open(a)
             try await move(folderName, to: b)
             XCTAssertNil(model.error)
+            XCTAssertTrue(model.favoriteFolders.contains(bFolder))
+            XCTAssertTrue(model.favoriteFolders.contains(bFolder + "/nested"))
+            XCTAssertFalse(model.favoriteFolders.contains(aFolder))
+            model.removeFolderFavorite(bFolder)
+            model.removeFolderFavorite(bFolder + "/nested")
             XCTAssertFalse(model.files.contains { $0.name == folderName })
             let nested = try await phone("set -e; test ! -e \(Shell.quote(aFolder)); test -d \(Shell.quote(bFolder + "/nested/empty")); "
                 + "test -z \"$(ls -A \(Shell.quote(bFolder + "/nested/empty")))\"; cat \(Shell.quote(bFolder + "/nested/item.txt"))")
@@ -166,6 +176,7 @@ final class RemoteMoveIntegrationTests: XCTestCase {
                 model.moveNotice = nil
                 try manager.removeItem(at: qa.appendingPathComponent("offline"))
                 try await connect()
+                try await wait { model.moveNotice != nil }
                 let notice = try XCTUnwrap(model.moveNotice)
                 XCTAssertTrue(notice.contains(mode == "after" ? "移到了目标目录" : "仍在源目录"), notice)
                 XCTAssertTrue(try journal.load().isEmpty)

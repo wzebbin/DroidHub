@@ -81,6 +81,34 @@ final class ADBDeviceInfoTests: XCTestCase {
         }
     }
 
+    func testMirrorDisplayCanSkipNameLookupAndStillReadDimensions() async throws {
+        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let script = #"""
+        #!/bin/sh
+        getprop() {
+          case "$1" in
+            ro.product.vendor.marketname) printf 'Fixture Phone\n' ;;
+          esac
+        }
+        dumpsys() { printf '  Display: mDisplayId=0\n    cur=1080x2400\n'; }
+        eval "set -- $7"
+        eval "$1"
+        """#
+        try Data(script.utf8).write(to: fixture)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.path)
+        let client = ADBClient(executable: fixture.path)
+        let device = try XCTUnwrap(AndroidDevice.parse("fixture device").first)
+        let name = try await client.deviceDisplayName(for: device)
+        let named = try await client.mirrorDisplay(serial: device.serial)
+        let sizeOnly = try await client.mirrorDisplay(serial: device.serial, includeName: false)
+        XCTAssertEqual(name, "Fixture Phone")
+        XCTAssertEqual(named.name, name)
+        XCTAssertNil(sizeOnly.name)
+        XCTAssertEqual(named.size, CGSize(width: 1080, height: 2400))
+        XCTAssertEqual(sizeOnly.size, named.size)
+    }
+
     func testDeviceSnapshotOnPhone() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let executable = env["DROIDHUB_DEVICE_TEST_ADB"],

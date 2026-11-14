@@ -30,7 +30,7 @@ final class BatchRenameIntegrationTests: XCTestCase {
                 + "printf nested > \(Shell.quote(directory + "/目录.v1/content.txt"))")
             await model.refreshDevices()
             model.selectedSerial = serial
-            try await wait { model.uploadTarget?.serial == serial }
+            try await wait { model.transfers.connection?.serial == serial }
             XCTAssertEqual(model.selectedDevice?.isWireless, label == "Wi-Fi")
             model.loadFiles(directory)
             try await wait { !model.busy && !model.isLoadingDirectory }
@@ -74,6 +74,11 @@ final class BatchRenameIntegrationTests: XCTestCase {
             XCTAssertTrue(model.error?.contains("传输任务") == true)
             model.transfers.cancel(paused.id)
 
+            model.loadFiles(directory + "/目录.v1")
+            try await wait { model.path == directory + "/目录.v1" && model.canFavoriteCurrentFolder }
+            model.toggleCurrentFolderFavorite()
+            model.loadFiles(directory)
+            try await wait { model.uploadTarget == target }
             model.error = nil
             var result: [DeviceFile] = []
             model.batchRename(selected, rule: rule, in: target) { result = $0 }
@@ -82,6 +87,9 @@ final class BatchRenameIntegrationTests: XCTestCase {
             XCTAssertEqual(Set(result.map(\.name)), Set(preview.rows.map(\.name)))
             XCTAssertEqual(Set(model.files.map(\.name)), Set(preview.rows.map(\.name)))
             XCTAssertEqual(model.batchRenameNotice, "已重命名 4 项。")
+            XCTAssertTrue(model.favoriteFolders.contains(directory + "/归档 目录.v1 完成"))
+            XCTAssertFalse(model.favoriteFolders.contains(directory + "/目录.v1"))
+            model.removeFolderFavorite(directory + "/归档 目录.v1 完成")
             let expected = ["one", "two", "image", "nested"]
             for (index, row) in preview.rows.enumerated() {
                 let path = directory + "/" + row.name + (row.file.isDirectory ? "/content.txt" : "")

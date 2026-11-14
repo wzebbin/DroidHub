@@ -247,7 +247,7 @@ struct DeviceConnectionSheet: View {
             if !devices.isEmpty || offersReconnect || !discovered.isEmpty {
                 VStack(spacing: 1) {
                     ForEach(devices) { device in
-                        deviceRow(name: device.model, detail: detail(for: device), wireless: device.isWireless) {
+                        deviceRow(name: model.displayName(for: device), detail: detail(for: device), wireless: device.isWireless) {
                             if model.selectedSerial == device.serial && device.isOnline {
                                 Label(l10n.text("当前设备"), systemImage: "checkmark.circle.fill").foregroundStyle(HubStyle.green)
                             } else if device.isOnline {
@@ -695,7 +695,8 @@ struct DeviceConnectionSheet: View {
         let saved = recent
         let sameDevice = saved?.matches(device) == true || (service != nil && saved?.serviceSerial == service?.serial)
         let serviceSerial = service?.serial ?? (ADBEndpoint(device.serial) == nil ? RecentDevice.normalize(device.serial) : nil)
-        let record = RecentDevice(model: device.model,
+        let name = model.displayName(for: device)
+        let record = RecentDevice(model: name == device.model && sameDevice ? saved?.model ?? name : name,
                                   address: (service?.endpoint ?? endpoint ?? ADBEndpoint(device.serial))?.description ?? (sameDevice ? saved?.address : nil),
                                   serviceSerial: serviceSerial ?? (sameDevice ? saved?.serviceSerial : nil),
                                   fingerprint: fingerprint ?? (sameDevice ? saved?.fingerprint : nil))

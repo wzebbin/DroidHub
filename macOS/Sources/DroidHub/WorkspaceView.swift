@@ -125,7 +125,7 @@ struct WorkspaceView: View {
         let hasDuplicate = model.devices.contains {
             $0.serial != device.serial && $0.model == device.model && $0.isWireless == device.isWireless
         }
-        var parts = [device.model, transport]
+        var parts = [model.displayName(for: device), transport]
         if hasDuplicate { parts.append(device.serial) }
         if !device.isOnline { parts.append(device.statusLabel) }
         return parts.joined(separator: " · ")
@@ -189,6 +189,10 @@ struct WorkspaceView: View {
         }
         .task(id: model.adbPath) { await model.pollDevices() }
         .task(id: model.adbPath) { await model.watchDevices() }
+        .task(id: model.online ? model.deviceSession : nil) { model.loadDeviceInfo() }
+        .task(id: model.devices) {
+            await model.loadDisplayNames(for: model.devices.filter { $0.serial != model.onlineSerial })
+        }
         .onAppear { showTransferQueue = model.transfers.showsRestoredItems || model.transfers.storageIssue != nil }
         .onChange(of: model.path) { _ in selectedFiles.removeAll(); search = "" }
         .onChange(of: model.selectedSerial) { _ in selectedFiles.removeAll(); selectedPhotos = []; photoPreview = nil; search = "" }
@@ -284,6 +288,9 @@ struct WorkspaceView: View {
                 navigation(.photos)
                 navigation(.apps)
             }.padding(.horizontal, 9).padding(.top, 16)
+            if !model.favoriteFolders.isEmpty {
+                sidebarFavorites
+            }
             Spacer(minLength: 24)
             if sidebarCollapsed {
                 Divider().overlay(HubStyle.line).padding(.horizontal, 15)
@@ -305,6 +312,94 @@ struct WorkspaceView: View {
                 }.padding(.horizontal, 13).frame(height: 39)
             }
         }
+    }
+
+    @ViewBuilder private var sidebarFavorites: some View {
+        if sidebarCollapsed {
+            Menu {
+                ForEach(model.favoriteFolders, id: \.self) { directory in
+                    Button(directory) { openFavoriteFolder(directory) }
+                        .disabled(model.busy)
+                }
+                Divider()
+                Menu(l10n.text("移除收藏")) {
+                    ForEach(model.favoriteFolders, id: \.self) { directory in
+                        Button(directory) { model.removeFolderFavorite(directory) }
+                    }
+                }
+            } label: {
+                Label(l10n.text("目录收藏"), systemImage: "star")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 36, height: 28)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help(l10n.text("目录收藏"))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+        } else {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(l10n.text("目录收藏"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(HubStyle.muted)
+                    .padding(.leading, 10)
+                    .accessibilityAddTraits(.isHeader)
+                ViewThatFits(in: .vertical) {
+                    favoriteFolderRows.fixedSize(horizontal: false, vertical: true)
+                    ScrollView { favoriteFolderRows }
+                }
+                .frame(maxHeight: 172, alignment: .top)
+            }
+            .padding(.horizontal, 9).padding(.top, 14)
+        }
+    }
+
+    private var favoriteFolderRows: some View {
+        VStack(spacing: 2) {
+            ForEach(model.favoriteFolders, id: \.self) { directory in
+                let name = favoriteFolderName(directory)
+                let selected = section == .files && model.path == directory && model.hasLoadedDirectory
+                Button {
+                    openFavoriteFolder(directory)
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "folder").foregroundStyle(selected ? HubStyle.accent : HubStyle.muted)
+                            .frame(width: 20)
+                        Text(verbatim: name).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 10).frame(height: 28)
+                    .background(selected ? HubStyle.sidebarSelection : .clear, in: RoundedRectangle(cornerRadius: 7))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
+                .help(directory)
+                .accessibilityLabel(name)
+                .accessibilityHint(directory)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+                .contextMenu {
+                    Button(l10n.text("移除收藏")) { model.removeFolderFavorite(directory) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func favoriteFolderName(_ directory: String) -> String {
+        switch directory {
+        case "/": return l10n.text("根目录")
+        case "/sdcard": return l10n.text("手机存储")
+        default: return (directory as NSString).lastPathComponent
+        }
+    }
+
+    private func openFavoriteFolder(_ directory: String) {
+        guard model.online, !model.busy, model.favoriteFolders.contains(directory) else { return }
+        search = ""
+        selectSection(.files)
+        model.loadFiles(directory)
     }
 
     private var connectionButton: some View {
@@ -331,7 +426,8 @@ struct WorkspaceView: View {
                     }.labelsHidden().controlSize(.small)
                 } else {
                     let title = model.initialDeviceDetection == .checking ? "正在检测设备…" : "未连接手机"
-                    Text(model.selectedDevice?.model ?? l10n.text(title)).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                    Text(model.selectedDevice.map { model.displayName(for: $0) } ?? l10n.text(title))
+                        .font(.system(size: 11, weight: .medium)).lineLimit(1)
                 }
                 HStack(spacing: 5) {
                     Circle().fill(model.online ? HubStyle.green : HubStyle.muted).frame(width: 5, height: 5)
@@ -360,13 +456,7 @@ struct WorkspaceView: View {
 
     private func navigation(_ item: LibrarySection) -> some View {
         Button {
-            guard section != item else { return }
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                searchFocused = false
-                section = item
-            }
+            selectSection(item)
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: item.symbol).font(.system(size: 14, weight: .regular))
@@ -388,6 +478,16 @@ struct WorkspaceView: View {
         .help(l10n.text(item.rawValue))
         .accessibilityLabel(l10n.text(item.rawValue))
         .accessibilityAddTraits(section == item ? .isSelected : [])
+    }
+
+    private func selectSection(_ item: LibrarySection) {
+        guard section != item else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            searchFocused = false
+            section = item
+        }
     }
 
     @ViewBuilder private var settingsButton: some View {
@@ -455,19 +555,23 @@ struct WorkspaceView: View {
         }
         .menuStyle(.borderlessButton).fixedSize().help(l10n.text("切换文件视图"))
 
-        ToolbarAction(title: l10n.text("导入"), symbol: "square.and.arrow.down", height: 27) {
+        ToolbarAction(title: l10n.text("上传到手机"), symbol: "arrow.up.to.line", height: 27) {
             if model.enqueueUploads() { showTransferQueue = true }
         }
         .disabled(model.uploadTarget == nil)
         .keyboardShortcut("i", modifiers: .command)
 
+        if !downloads.isEmpty {
+            ToolbarAction(title: l10n.text("下载到 Mac…"), symbol: "arrow.down.to.line", height: 27) {
+                enqueueDownloads(downloads)
+            }
+            .disabled(!canDownload)
+            .keyboardShortcut("e", modifiers: .command)
+        }
+
         Menu {
             Button(l10n.text("新建文件夹…")) { editFileName() }
                 .disabled(model.uploadTarget == nil)
-            Button(downloads.isEmpty ? l10n.text("下载") : l10n.text("下载 {1} 项", downloads.count)) {
-                enqueueDownloads(downloads)
-            }
-            .disabled(!canDownload).keyboardShortcut("e", modifiers: .command)
             Divider()
             Button(l10n.text("全选当前文件")) { selectedFiles = fileIDs }
                 .disabled(!model.online || searchFocused || fileIDs.isEmpty)

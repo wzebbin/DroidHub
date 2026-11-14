@@ -146,11 +146,27 @@ private extension String {
 }
 
 extension ADBClient {
-    public func mirrorDisplay(serial: String) async throws -> AndroidMirrorDisplay {
-        let data = try await shell(serial: serial, script: """
-        name=$(getprop ro.product.marketname)
-        [ -n "$name" ] || name=$(getprop ro.product.vendor.marketname)
+    private static let deviceNameScript = """
+    name=$(getprop ro.product.marketname)
+    [ -n "$name" ] || name=$(getprop ro.product.vendor.marketname)
+    [ -n "$name" ] || name=$(getprop ro.product.model)
+    """
+
+    public func deviceDisplayName(for device: AndroidDevice) async throws -> String? {
+        let data = try await shell(device: device, script: """
+        \(Self.deviceNameScript)
+        printf '%s' "$name"
+        """, timeout: 3)
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    public func mirrorDisplay(serial: String, includeName: Bool = true) async throws -> AndroidMirrorDisplay {
+        let nameScript = includeName ? """
+        \(Self.deviceNameScript)
         printf 'name=%s\\n' "$name"
+        """ : ""
+        let data = try await shell(serial: serial, script: """
+        \(nameScript)
         dumpsys -t 1 window displays 2>/dev/null | awk '
           /^[[:space:]]*Display:/ { primary = ($0 ~ /mDisplayId=0([[:space:]]|$)/) }
           primary && match($0, /[[:space:]]cur=[0-9]+x[0-9]+/) {

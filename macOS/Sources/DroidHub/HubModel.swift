@@ -40,6 +40,7 @@ final class HubModel: ObservableObject {
     @Published private(set) var isLoadingDirectory = false
     @Published private(set) var directoryFailure: (path: String, message: String)?
     @Published var path = "/sdcard"
+    @Published private var folderFavorites: [String: [String]]
     var deviceSession: UUID { generation }
     @Published private var gallery = GalleryBrowsing()
     @Published private(set) var galleryLoading = false
@@ -100,13 +101,18 @@ final class HubModel: ObservableObject {
     private var uploadedDirectoryRefresh: Task<Void, Never>?
     private var directoryLoad: Task<Void, Never>?
     private var directoryCache: [String: [DeviceFile]] = [:]
+    @Published private var verifiedDirectory: String?
+    @Published private var deviceNames: [String: String] = [:]
     private var directoryRevision = UUID()
     private var showingCachedDirectory = false
     private var directoryHistory: [String] = []
     private var directoryOffsets: [String: CGFloat] = [:]
+    private let folderPreferences: UserDefaults
+    private static let folderFavoritesKey = "phoneFolderFavorites"
     private var mirrorTask: Task<Void, Never>?
     private var screenshotTask: Task<Void, Never>?
-    private var recordingTask: Task<Void, Never>?
+    private var recordingTask: Task<Bool, Never>?
+    private var quittingAfterRecording = false
     private var recordingInterruption: ProcessRunner.Interruption?
     private var deviceInfoTask: Task<Void, Never>?
     @Published private var generation = UUID()
@@ -127,6 +133,8 @@ final class HubModel: ObservableObject {
     init(transferStorageURL: URL = TransferQueueStore.applicationURL, transferPreferences: UserDefaults = .standard,
          galleryCache: GalleryManifestCache = .shared) {
         self.galleryCache = galleryCache
+        self.folderPreferences = transferPreferences
+        self.folderFavorites = transferPreferences.dictionary(forKey: Self.folderFavoritesKey) as? [String: [String]] ?? [:]
         transfers = TransferQueue(storageURL: transferStorageURL, preferences: transferPreferences)
         moveJournal = RemoteMoveJournal(url: transferStorageURL.deletingLastPathComponent().appendingPathComponent("pending-moves.json"))
         moveBatchStore = RemoteMoveBatchStore(url: transferStorageURL.deletingLastPathComponent()
@@ -153,6 +161,22 @@ final class HubModel: ObservableObject {
         return ADBClient.discover(name) ?? ""
     }
     var selectedDevice: AndroidDevice? { devices.first { $0.serial == selectedSerial } }
+    func displayName(for device: AndroidDevice) -> String {
+        deviceNames[device.serial] ?? device.model
+    }
+
+    func loadDisplayNames(for candidates: [AndroidDevice]) async {
+        let client = adb
+        await withTaskGroup(of: (AndroidDevice, String?).self) { group in
+            for device in candidates where device.isOnline && deviceNames[device.serial] == nil {
+                group.addTask { (device, try? await client.deviceDisplayName(for: device)) }
+            }
+            for await (device, name) in group {
+                guard !Task.isCancelled, client.executable == adbPath, devices.contains(device), let name else { continue }
+                if deviceNames[device.serial] == nil { deviceNames[device.serial] = name }
+            }
+        }
+    }
     var online: Bool { selectedDevice?.isOnline == true }
     var onlineSerial: String? { online ? selectedSerial : nil }
     var adb: ADBClient { ADBClient(executable: adbPath) }
@@ -200,6 +224,12 @@ final class HubModel: ObservableObject {
             guard !Task.isCancelled, id == deviceRefreshID, client.executable == adbPath else { return }
             lastDeviceRefresh = ContinuousClock().now
             let previous = selectedDevice
+            let retainedNames = deviceNames.filter { serial, _ in
+                guard let before = devices.first(where: { $0.serial == serial }),
+                      let after = result.first(where: { $0.serial == serial }) else { return false }
+                return before.isOnline && after.isOnline && before.transportID == after.transportID && before.model == after.model
+            }
+            if retainedNames != deviceNames { deviceNames = retainedNames }
             if result != devices { devices = result }
             if let available = result.first(where: \.isOnline), !online {
                 // ADB can retain an offline transport while another transport comes online.
@@ -234,6 +264,7 @@ final class HubModel: ObservableObject {
         }
         if let previous, previous.serial == device.serial,
            previous.isOnline != device.isOnline || previous.transportID != device.transportID {
+            deviceNames[device.serial] = nil
             resetDevice(connectionLost: true)
         }
         selectedSerial = device.serial
@@ -296,6 +327,7 @@ final class HubModel: ObservableObject {
         uploadedDirectoryRefresh?.cancel()
         cancelDirectoryLoad()
         directoryFailure = nil
+        verifiedDirectory = nil
         invalidateDirectoryCache()
         directoryHistory.removeAll()
         directoryOffsets.removeAll()
@@ -348,7 +380,7 @@ final class HubModel: ObservableObject {
         await pendingDirectoryLoad?.value
         await pendingMirror?.value
         await pendingScreenshot?.value
-        await recordingTask?.value
+        _ = await recordingTask?.value
         await pendingDeviceInfo?.value
         await transfers.waitForActive()
     }
@@ -419,6 +451,7 @@ final class HubModel: ObservableObject {
         directoryLoad?.cancel()
         uploadedDirectoryRefresh?.cancel()
         directoryFailure = nil
+        verifiedDirectory = nil
         isLoadingDirectory = true
         let cached = directoryCache[normalized]
         if let cached, normalized != path {
@@ -446,9 +479,11 @@ final class HubModel: ObservableObject {
                 if files != result { files = result }
                 showingCachedDirectory = false
                 rememberDirectory(normalized, files: result)
+                verifiedDirectory = normalized
             } catch {
                 guard !Task.isCancelled, generation == session else { return }
                 directoryCache[normalized] = nil
+                verifiedDirectory = nil
                 if showingCachedDirectory {
                     files = []
                     showingCachedDirectory = false
@@ -498,6 +533,7 @@ final class HubModel: ObservableObject {
             guard isCurrent() else { return nil }
             rememberDirectory(directory, files: result)
             files = result
+            if directoryFailure == nil { verifiedDirectory = directory }
             return result
         } catch {
             guard isCurrent() else { return nil }
@@ -507,6 +543,68 @@ final class HubModel: ObservableObject {
 
     func directoryOffset(for directory: String) -> CGFloat { directoryOffsets[directory] ?? 0 }
     var hasLoadedDirectory: Bool { directoryCache[path] != nil }
+
+    private var folderFavoritesDeviceKey: String? {
+        guard let connection = transfers.connection, connection.serial == onlineSerial else { return nil }
+        return Self.folderFavoritesKey(for: connection.deviceID)
+    }
+
+    private static func folderFavoritesKey(for device: TransferDeviceID) -> String? {
+        switch device {
+        case .hardware(let fingerprint): return "hardware:" + fingerprint
+        case .usb(let serial): return "usb:" + TransferDeviceID.hardwareFingerprint(serial)
+        case .session: return nil
+        }
+    }
+
+    var favoriteFolders: [String] {
+        guard let key = folderFavoritesDeviceKey else { return [] }
+        return folderFavorites[key] ?? []
+    }
+
+    var canFavoriteCurrentFolder: Bool {
+        folderFavoritesDeviceKey != nil && !busy && !isLoadingDirectory && directoryFailure == nil && hasLoadedDirectory
+    }
+
+    func toggleCurrentFolderFavorite() {
+        guard canFavoriteCurrentFolder, let key = folderFavoritesDeviceKey else { return }
+        if favoriteFolders.contains(path) {
+            removeFolderFavorite(path)
+        } else {
+            saveFavoriteFolders(favoriteFolders + [path], for: key)
+        }
+    }
+
+    func removeFolderFavorite(_ directory: String) {
+        guard let key = folderFavoritesDeviceKey, favoriteFolders.contains(directory) else { return }
+        saveFavoriteFolders(favoriteFolders.filter { $0 != directory }, for: key)
+    }
+
+    private func saveFavoriteFolders(_ directories: [String], for key: String) {
+        folderFavorites[key] = directories.isEmpty ? nil : directories
+        folderPreferences.set(folderFavorites, forKey: Self.folderFavoritesKey)
+    }
+
+    private func relocateFavoriteFolders(_ move: RemoteMove, device: TransferDeviceID) {
+        relocateFavoriteFolders(from: move.source, to: move.destination, device: device,
+                                visibleSource: move.visibleSource, visibleDestination: move.visibleDestination)
+    }
+
+    private func relocateFavoriteFolders(from source: String, to destination: String, device: TransferDeviceID,
+                                         visibleSource: String? = nil, visibleDestination: String? = nil) {
+        guard let key = Self.folderFavoritesKey(for: device), let folders = folderFavorites[key] else { return }
+        var seen = Set<String>()
+        let updated = folders.compactMap { path -> String? in
+            var next = path
+            for (old, new) in [(visibleSource ?? source, visibleDestination ?? destination), (source, destination)] {
+                guard path == old || path.hasPrefix(old + "/") else { continue }
+                next = new + String(path.dropFirst(old.count))
+                break
+            }
+            return seen.insert(next).inserted ? next : nil
+        }
+        if updated != folders { saveFavoriteFolders(updated, for: key) }
+    }
 
     func rememberDirectoryOffset(_ offset: CGFloat, for directory: String, session: UUID) {
         guard generation == session, directoryHistory.contains(directory) else { return }
@@ -522,7 +620,8 @@ final class HubModel: ObservableObject {
 
     var uploadTarget: UploadTarget? {
         guard let connection = transfers.connection, onlineSerial == connection.serial,
-              !busy, !isLoadingDirectory, moveRecovery == nil, fileRecordWrite == nil else { return nil }
+              !busy, !isLoadingDirectory, directoryFailure == nil,
+              verifiedDirectory == path, moveRecovery == nil, fileRecordWrite == nil else { return nil }
         return UploadTarget(session: generation, serial: connection.serial, directory: path, executable: connection.executable)
     }
 
@@ -571,6 +670,9 @@ final class HubModel: ObservableObject {
                         throw HubError.message(L10n.text("没有权限修改这个手机目录。请在可写目录中重试。"))
                     }
                     throw HubError.message(L10n.diagnostic(failure))
+                }
+                if let file, file.isDirectory {
+                    self.relocateFavoriteFolders(from: file.path, to: destination, device: connection.deviceID)
                 }
                 try Task.checkCancellation()
                 do {
@@ -1100,6 +1202,11 @@ final class HubModel: ObservableObject {
         }
         snapshot.batches.removeAll { $0.device == batch.device }
         snapshot.batches.append(batch)
+        if batch.trash == nil, let previous, batch.completed > previous.completed {
+            for move in batch.moves[previous.completed..<batch.completed] {
+                relocateFavoriteFolders(move, device: batch.device)
+            }
+        }
         try await saveMoveSnapshot(snapshot)
     }
 
@@ -1281,6 +1388,7 @@ final class HubModel: ObservableObject {
             if generation == session, transfers.connection == connection { recoverRemoteMove(on: connection) }
             throw error
         }
+        relocateFavoriteFolders(move, device: connection.deviceID)
         try await removePendingMove(on: connection)
     }
 
@@ -1318,6 +1426,7 @@ final class HubModel: ObservableObject {
                     let result = try await connection.client.reconcileMove(serial: connection.serial, move: pending.move)
                     try Task.checkCancellation()
                     guard self.generation == session, self.transfers.connection == connection else { return }
+                    if result == .moved { self.relocateFavoriteFolders(pending.move, device: connection.deviceID) }
                     try await self.removePendingMove(on: connection)
                     self.error = nil
                     if let batch = pending.batch {
@@ -1731,6 +1840,9 @@ final class HubModel: ObservableObject {
             guard !Task.isCancelled, deviceSession == session, onlineSerial == serial else { return }
             deviceInfoTask = nil
             if let info {
+                if let name = info.marketName ?? info.model, deviceNames[serial] != name {
+                    deviceNames[serial] = name
+                }
                 deviceInfoState = DeviceInfoState(info: info, updatedAt: .now)
             } else {
                 state.loading = false
@@ -1761,9 +1873,10 @@ final class HubModel: ObservableObject {
                 if current == generation { mirroringState = .idle; mirrorTask = nil }
             }
             do {
-                let resolvedDisplay = try? await client.mirrorDisplay(serial: device.serial)
+                let resolvedDisplay = try? await client.mirrorDisplay(serial: device.serial,
+                                                                      includeName: deviceNames[device.serial] == nil)
                 try Task.checkCancellation()
-                let name = resolvedDisplay?.name ?? deviceInfoState.info?.marketName ?? device.model
+                let name = deviceNames[device.serial] ?? resolvedDisplay?.name ?? device.model
                 var arguments = ["--serial", device.serial, "--window-title", L10n.text("{1} · 投屏", name),
                                  "--max-size", "1920", "--max-fps", "60", "--no-audio"]
                 let size = resolvedDisplay?.size ?? CGSize(width: 1080, height: 2400)
@@ -1815,7 +1928,7 @@ final class HubModel: ObservableObject {
     }
 
     func startScreenRecording() {
-        guard !shuttingDown, recordingTask == nil, let serial = onlineSerial else { return }
+        guard !shuttingDown, !quittingAfterRecording, recordingTask == nil, let serial = onlineSerial else { return }
         let executable = scrcpyPath
         guard FileManager.default.isExecutableFile(atPath: executable) else {
             error = L10n.text("请在设置中指定 scrcpy 可执行文件。")
@@ -1844,14 +1957,26 @@ final class HubModel: ObservableObject {
                 }, onSaving: {
                     self.finishRecordingTimer()
                 })
-            } catch is CancellationError {
-                return
+                return true
             } catch {
-                if !shuttingDown {
-                    self.error = L10n.text("录屏失败。{1}", L10n.diagnostic(error.localizedDescription))
+                if !shuttingDown, quittingAfterRecording || !(error is CancellationError) {
+                    let reason = error is CancellationError
+                        ? L10n.text("录屏尚未启动，没有可保存的视频。")
+                        : L10n.diagnostic(error.localizedDescription)
+                    self.error = L10n.text("录屏失败。{1}", reason)
                 }
+                return false
             }
         }
+    }
+
+    func saveRecordingBeforeQuitting() async -> Bool {
+        guard let recordingTask else { return true }
+        quittingAfterRecording = true
+        stopScreenRecording()
+        let saved = await recordingTask.value
+        if !saved { quittingAfterRecording = false }
+        return saved
     }
 
     func stopScreenRecording() {

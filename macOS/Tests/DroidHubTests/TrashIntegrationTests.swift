@@ -73,7 +73,7 @@ final class TrashIntegrationTests: XCTestCase {
             func connect() async throws {
                 await model.refreshDevices()
                 model.selectedSerial = serial
-                try await wait { model.transfers.connection?.serial == serial && model.uploadTarget != nil }
+                try await wait { model.transfers.connection?.serial == serial }
             }
             func open(_ directory: String) async throws -> HubModel.UploadTarget {
                 model.loadFiles(directory)
@@ -111,6 +111,9 @@ final class TrashIntegrationTests: XCTestCase {
                     model.adbPath = wrapper.path
                 }
                 try await connect()
+                try await wait {
+                    model.canManageTrashDeletion && model.trashDeletionBatch?.checkIndex == nil
+                }
             }
 
             let directory = remote + "/" + label + "/source"

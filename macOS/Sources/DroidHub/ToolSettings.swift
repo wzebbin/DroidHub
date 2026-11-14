@@ -8,15 +8,26 @@ struct ToolSettings: View {
     @ObservedObject private var model: HubModel
     @Binding var appearance: AppAppearance
     @Binding var language: AppLanguage
+    @Binding var includePreviewUpdates: Bool
+    @Binding var checkForUpdatesOnLaunch: Bool
+    let checkingForUpdates: Bool
+    let checkForUpdates: @MainActor () async -> UpdateNotice?
     @State private var adbPath: String
     @State private var scrcpyPath: String
     @State private var showAdvanced = false
+    @State private var showAbout = false
     @AppStorage(MainWindowCloseBehavior.storageKey) private var closeBehavior = MainWindowCloseBehavior.defaultValue
     @AppStorage(TransferQueue.autoResumeKey) private var autoResumeTransfers = false
-    init(model: HubModel, appearance: Binding<AppAppearance>, language: Binding<AppLanguage>) {
+    init(model: HubModel, appearance: Binding<AppAppearance>, language: Binding<AppLanguage>,
+         includePreviewUpdates: Binding<Bool>, checkForUpdatesOnLaunch: Binding<Bool>, checkingForUpdates: Bool,
+         checkForUpdates: @escaping @MainActor () async -> UpdateNotice?) {
         self.model = model
         _appearance = appearance
         _language = language
+        _includePreviewUpdates = includePreviewUpdates
+        _checkForUpdatesOnLaunch = checkForUpdatesOnLaunch
+        self.checkingForUpdates = checkingForUpdates
+        self.checkForUpdates = checkForUpdates
         _adbPath = State(initialValue: model.adbPath)
         _scrcpyPath = State(initialValue: model.scrcpyPath)
     }
@@ -95,24 +106,36 @@ struct ToolSettings: View {
                 .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Divider().overlay(HubStyle.line)
-                Button {
-                    showAdvanced = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(l10n.text("高级设置"))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(HubStyle.accent)
-                            .accessibilityHidden(true)
+            settingsSection(l10n.text("软件更新")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle(isOn: $includePreviewUpdates) {
+                        HStack(spacing: 12) {
+                            settingsIcon("arrow.down.circle")
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(l10n.text("检查开发预览版")).font(.system(size: 13, weight: .medium))
+                                Text(l10n.text("使用「检查更新」时也查找开发预览版。"))
+                                    .font(.system(size: 11)).foregroundStyle(HubStyle.muted)
+                            }
+                            Spacer(minLength: 12)
+                        }
                     }
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
+                    .toggleStyle(.switch)
+                    HStack {
+                        Toggle(l10n.text("启动时检查更新"), isOn: $checkForUpdatesOnLaunch)
+                            .toggleStyle(.checkbox)
+                        Spacer()
+                        CheckForUpdatesButton(checkingForUpdates: checkingForUpdates, checkForUpdates: checkForUpdates)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Divider().overlay(HubStyle.line)
+                settingsLink(l10n.text("高级设置")) { showAdvanced = true }
+                settingsLink(l10n.text("关于软件")) { showAbout = true }
             }
         }
         .padding(HubStyle.workspaceInset)
@@ -123,6 +146,26 @@ struct ToolSettings: View {
         .sheet(isPresented: $showAdvanced) {
             AdvancedToolSettings(model: model, adbPath: $adbPath, scrcpyPath: $scrcpyPath)
         }
+        .sheet(isPresented: $showAbout) {
+            AboutSettings(checkingForUpdates: checkingForUpdates, checkForUpdates: checkForUpdates)
+        }
+    }
+
+    private func settingsLink(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(HubStyle.accent)
+                    .accessibilityHidden(true)
+            }
+            .font(.system(size: 13, weight: .medium))
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -236,6 +279,84 @@ struct ToolSettings: View {
             .frame(width: 32, height: 32)
             .background(HubStyle.canvas.opacity(0.82), in: RoundedRectangle(cornerRadius: 7))
             .accessibilityHidden(true)
+    }
+}
+
+@MainActor
+private struct CheckForUpdatesButton: View {
+    @Environment(\.l10n) private var l10n
+    @State private var updateNotice: UpdateNotice?
+    let checkingForUpdates: Bool
+    let checkForUpdates: @MainActor () async -> UpdateNotice?
+
+    var body: some View {
+        Button(l10n.text(checkingForUpdates ? "正在检查更新…" : "检查更新…")) {
+            Task { updateNotice = await checkForUpdates() }
+        }
+        .disabled(checkingForUpdates)
+        .alert(item: $updateNotice) { $0.alert }
+    }
+}
+
+@MainActor
+private struct AboutSettings: View {
+    @Environment(\.l10n) private var l10n
+    @Environment(\.dismiss) private var dismiss
+    let checkingForUpdates: Bool
+    let checkForUpdates: @MainActor () async -> UpdateNotice?
+
+    private var projectURL: URL? {
+        guard let repository = Bundle.main.object(forInfoDictionaryKey: "DroidHubReleaseRepository") as? String else { return nil }
+        return GitHubReleaseSource(repository: repository)?.projectURL
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(l10n.text("关于软件"))
+                .font(.system(size: 14, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
+
+            HStack(spacing: 14) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 56, height: 56)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("DroidHub").font(.system(size: 20, weight: .semibold))
+                    if let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                        Text(l10n.text("版本 {1}", version))
+                            .font(.system(size: 12)).foregroundStyle(HubStyle.muted)
+                    }
+                    if let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+                        Text(l10n.text("构建号 {1}", build))
+                            .font(.system(size: 11)).foregroundStyle(HubStyle.muted)
+                    }
+                }
+                .textSelection(.enabled)
+                Spacer(minLength: 8)
+                CheckForUpdatesButton(checkingForUpdates: checkingForUpdates, checkForUpdates: checkForUpdates)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
+
+            HStack(spacing: 14) {
+                if let projectURL {
+                    Link(l10n.text("GitHub 项目主页"), destination: projectURL)
+                    Link(l10n.text("打开 GitHub 发布页"), destination: projectURL.appendingPathComponent("releases"))
+                }
+                Spacer()
+                Button(l10n.text("关闭")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .font(.system(size: 12))
+        }
+        .padding(HubStyle.workspaceInset)
+        .frame(width: 420)
+        .foregroundStyle(HubStyle.ink)
+        .tint(HubStyle.accent)
+        .background(HubStyle.canvas)
     }
 }
 

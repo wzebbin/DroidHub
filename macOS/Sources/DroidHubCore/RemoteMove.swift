@@ -6,6 +6,8 @@ public struct RemoteMove: Codable, Sendable {
     public let name: String
     fileprivate let signature: String
     fileprivate let id: UUID
+    public fileprivate(set) var visibleSource: String? = nil
+    public fileprivate(set) var visibleDestination: String? = nil
 
     fileprivate var identity: String { Self.identity(from: signature) }
 
@@ -68,7 +70,8 @@ extension ADBClient {
         guard state.destination == "missing" else {
             throw RemoteMoveRejection(message: "目标目录已有同名项目。请换一个目录或先改名。")
         }
-        return RemoteMove(source: source, destination: destination, name: file.name, signature: state.source, id: UUID())
+        return RemoteMove(source: source, destination: destination, name: file.name, signature: state.source, id: UUID(),
+                          visibleSource: file.path, visibleDestination: try Self.entryPath(parent: destinationParent, name: file.name))
     }
 
     public func previewBatchMove(serial: String, files: [DeviceFile], from sourceParent: String,
@@ -81,11 +84,12 @@ extension ADBClient {
         let target = to.lowercased()
         let entries = try files.map { file in
             (source: try Self.entryPath(parent: from, name: file.name),
-             destination: try Self.entryPath(parent: to, name: file.name))
+             destination: try Self.entryPath(parent: to, name: file.name),
+             visibleDestination: try Self.entryPath(parent: destinationParent, name: file.name))
         }
         let resolved = try await canonicalPaths(serial: serial, paths: zip(files, entries)
             .filter { $0.0.isDirectory }.map { $0.1.source })
-        let states = try await inspectBatchMovePaths(serial: serial, paths: entries)
+        let states = try await inspectBatchMovePaths(serial: serial, paths: entries.map { ($0.source, $0.destination) })
         return zip(zip(files, entries), states).map { entry, state in
             let (file, path) = entry
             let folder = (resolved[path.source] ?? path.source).lowercased()
@@ -106,7 +110,9 @@ extension ADBClient {
                 issue = nil
             }
             let move = issue == nil ? RemoteMove(source: path.source, destination: path.destination,
-                                                  name: file.name, signature: state.source, id: UUID()) : nil
+                                                  name: file.name, signature: state.source, id: UUID(),
+                                                  visibleSource: file.path,
+                                                  visibleDestination: path.visibleDestination) : nil
             return BatchMoveRow(file: file, move: move, issue: issue)
         }
     }
@@ -289,7 +295,8 @@ extension ADBClient {
         let paths = try plan.changes.map { row in
             (source: try Self.entryPath(parent: directory, name: row.file.name),
              destination: try Self.entryPath(parent: directory, name: row.name),
-             name: row.file.name)
+             name: row.file.name, visibleSource: row.file.path,
+             visibleDestination: try Self.entryPath(parent: parent, name: row.name))
         }
         let states = try await inspectBatchMovePaths(serial: serial, paths: paths.map { ($0.source, $0.destination) })
         return try zip(paths, states).map { path, state in
@@ -301,7 +308,8 @@ extension ADBClient {
                 throw RemoteMoveRejection(message: "「\(path.name)」无法重命名。\(message)请重新预览。")
             }
             return RemoteMove(source: path.source, destination: path.destination, name: path.name,
-                              signature: state.source, id: UUID())
+                              signature: state.source, id: UUID(),
+                              visibleSource: path.visibleSource, visibleDestination: path.visibleDestination)
         }
     }
 

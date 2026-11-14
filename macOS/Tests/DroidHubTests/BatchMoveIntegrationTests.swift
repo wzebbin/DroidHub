@@ -54,7 +54,7 @@ final class BatchMoveIntegrationTests: XCTestCase {
             func connect(_ model: HubModel) async throws {
                 await model.refreshDevices()
                 model.selectedSerial = serial
-                try await wait { model.transfers.connection?.serial == serial && model.uploadTarget != nil }
+                try await wait { model.transfers.connection?.serial == serial }
             }
             func open(_ directory: String) async throws -> HubModel.UploadTarget {
                 model.loadFiles(directory)
@@ -172,6 +172,7 @@ final class BatchMoveIntegrationTests: XCTestCase {
                 let resumed = mode == "before" ? model : HubModel(transferStorageURL: storage)
                 resumed.adbPath = wrapper.path
                 try await connect(resumed)
+                try await wait { resumed.canManageMoveBatch && resumed.moveBatch?.checking == false }
                 XCTAssertEqual(resumed.moveBatch?.completed, mode == "before" ? 1 : 2)
                 XCTAssertFalse(try XCTUnwrap(resumed.moveBatch).checking)
                 let retryConflict = destination + "/03 最后.jpg"
