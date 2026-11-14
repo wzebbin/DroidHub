@@ -31,6 +31,21 @@ enum AppAppearance: String {
     }
 }
 
+enum MainWindowCloseBehavior: String, CaseIterable {
+    case quit, hide, ask
+
+    static let storageKey = "mainWindowCloseBehavior"
+    static let defaultValue: Self = .ask
+
+    var label: String {
+        switch self {
+        case .quit: return "直接退出"
+        case .hide: return "隐藏窗口"
+        case .ask: return "每次询问"
+        }
+    }
+}
+
 @main
 struct DroidHubApp: App {
     private let startup = StartupMetrics()
@@ -67,6 +82,9 @@ struct DroidHubApp: App {
                 .alert(item: $updateNotice) { $0.alert }
                 .onAppear {
                     delegate.onTerminate = { await model.shutdown() }
+                    delegate.hasActiveTransfers = {
+                        model.transfers.items.contains { $0.state.isInQueue } || model.photoExportProgress != nil
+                    }
                     startup.record("window_content_ready")
                     if model.online { startup.record("device_online") }
                     let previews = model.videoPreviewFiles
@@ -74,7 +92,7 @@ struct DroidHubApp: App {
                 }
                 .onChange(of: model.online) { if $0 { startup.record("device_online") } }
                 .frame(minWidth: MainWindowSizing.minimumSize.width, minHeight: MainWindowSizing.minimumSize.height)
-                .background(MainWindowSizing())
+                .background(MainWindowSizing(appDelegate: delegate))
         }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: MainWindowSizing.defaultSize.width, height: MainWindowSizing.defaultSize.height)
@@ -128,6 +146,11 @@ struct DroidHubApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var onTerminate: (() async -> Void)?
+    var hasActiveTransfers: (() -> Bool)?
+    weak var mainWindow: NSWindow?
+    private var closePromptOpen = false
+    private var confirmedTransferQuit = false
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         UserDefaults.standard.removeObject(forKey: "mainWindowManualContentSize")
         let saved = UserDefaults.standard.string(forKey: AppAppearance.storageKey)
@@ -138,8 +161,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard let mainWindow, !mainWindow.isVisible else { return true }
+        mainWindow.makeKeyAndOrderFront(nil)
+        return false
+    }
+
+    func requestMainWindowClose(_ window: NSWindow) {
+        guard !closePromptOpen else { return }
+        let saved = UserDefaults.standard.string(forKey: MainWindowCloseBehavior.storageKey)
+        switch saved.flatMap(MainWindowCloseBehavior.init(rawValue:)) ?? .defaultValue {
+        case .quit:
+            NSApp.terminate(nil)
+        case .hide:
+            window.orderOut(nil)
+        case .ask:
+            let transferActive = hasActiveTransfers?() == true
+            let alert = NSAlert()
+            alert.messageText = L10n.text("关闭 DroidHub 主窗口？")
+            alert.informativeText = transferActive
+                ? L10n.text("传输队列还有未完成的任务。隐藏窗口可继续传输，退出会中断任务。")
+                : L10n.text("隐藏后可点击程序坞中的 DroidHub 图标重新打开主窗口。")
+            alert.addButton(withTitle: L10n.text("隐藏窗口"))
+            alert.addButton(withTitle: L10n.text("退出 DroidHub"))
+            alert.addButton(withTitle: L10n.text("取消")).keyEquivalent = "\u{1b}"
+            closePromptOpen = true
+            let response = alert.runModal()
+            closePromptOpen = false
+            switch response {
+            case .alertFirstButtonReturn:
+                window.orderOut(nil)
+            case .alertSecondButtonReturn:
+                confirmedTransferQuit = transferActive
+                NSApp.terminate(nil)
+                confirmedTransferQuit = false
+            default:
+                break
+            }
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !closePromptOpen else { return .terminateCancel }
+        if !confirmedTransferQuit, hasActiveTransfers?() == true {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.text("传输尚未完成")
+            alert.informativeText = L10n.text("退出 DroidHub 会中断未完成的任务。")
+            alert.addButton(withTitle: L10n.text("取消")).keyEquivalent = "\r"
+            alert.addButton(withTitle: L10n.text("退出 DroidHub"))
+            closePromptOpen = true
+            let response = alert.runModal()
+            closePromptOpen = false
+            guard response == .alertSecondButtonReturn else { return .terminateCancel }
+        }
         Task { @MainActor in
             await onTerminate?()
             sender.reply(toApplicationShouldTerminate: true)

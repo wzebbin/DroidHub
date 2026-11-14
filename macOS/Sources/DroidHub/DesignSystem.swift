@@ -34,6 +34,8 @@ enum HubStyle {
     static let error = adaptive(0xA13F49, 0xF199A2)
     static let folder = adaptive(0xB3C7DE, 0x536D89)
     static let onFolder = adaptive(0x47617D, 0xE5EFFA)
+    static let deviceSurface = adaptive(0xEDF4FA, 0x263544)
+    static let errorSurface = adaptive(0xFBEEF0, 0x39292F)
 
     static func previewColor(_ color: KeyPath<Palette, UInt32>, dark: Bool) -> Color {
         Color(nsColor: srgb((dark ? Self.dark : light)[keyPath: color]))
@@ -219,13 +221,13 @@ struct LibraryStateView<Actions: View>: View {
             Group {
                 if let symbol {
                     Image(systemName: symbol).font(.system(size: 24))
-                        .foregroundStyle(isError ? HubStyle.error : HubStyle.accent)
+                        .foregroundStyle(isError ? HubStyle.error : HubStyle.muted)
                 } else {
                     ProgressView().controlSize(.small)
                 }
             }
             .frame(width: 52, height: 52)
-            .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 12))
+            .background(isError ? HubStyle.errorSurface : HubStyle.well, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityHidden(true)
             VStack(spacing: 7) {
                 Text(title).font(.system(size: 16, weight: .semibold)).foregroundStyle(HubStyle.ink)
@@ -235,7 +237,7 @@ struct LibraryStateView<Actions: View>: View {
                 }
             }
             .multilineTextAlignment(.center)
-            .frame(maxWidth: 420)
+            .frame(maxWidth: 360)
             actions()
         }
         .padding(HubStyle.workspaceInset)
@@ -265,7 +267,7 @@ struct WorkspaceNotice: View {
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 8))
+        .background(isError ? HubStyle.errorSurface : HubStyle.well, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

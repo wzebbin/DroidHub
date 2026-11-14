@@ -72,7 +72,7 @@ struct ApplicationLibraryView: View {
                 applicationToolbar(selected: selected, session: session, user: user, compact: true)
             }
             .padding(.horizontal, HubStyle.workspaceInset).frame(height: HubStyle.controlBarHeight)
-            .background(HubStyle.workspaceTint)
+            .background(HubStyle.canvas)
             Divider().overlay(HubStyle.line)
             if applications.applicationList != nil {
                 if let failure = applications.applicationListFailure {
@@ -84,7 +84,11 @@ struct ApplicationLibraryView: View {
                                       detail: l10n.text("名称读取后，搜索结果会自动更新。")) { EmptyView() }
                 } else if visible.isEmpty {
                     LibraryStateView(symbol: "magnifyingglass", title: filter.isEmpty ? l10n.text("没有可显示的应用") : l10n.text("没有匹配的应用"),
-                                      detail: emptyDetail(searching: !filter.isEmpty)) { EmptyView() }
+                                      detail: emptyDetail(searching: !filter.isEmpty)) {
+                        if !filter.isEmpty {
+                            ToolbarAction(title: l10n.text("清除搜索"), symbol: "xmark") { query = "" }
+                        }
+                    }
                 } else {
                     Table(visible, selection: $selection) {
                         TableColumn(l10n.text("应用")) { application in
@@ -278,7 +282,7 @@ struct ApplicationLibraryView: View {
         ]
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(app.displayName).font(.system(size: 12, weight: .semibold))
+                Text(app.displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
                 QuietIconButton(symbol: "document.on.document", help: l10n.text("复制应用详情")) {
                     NSPasteboard.general.clearContents()
@@ -305,7 +309,7 @@ struct ApplicationLibraryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, HubStyle.workspaceInset).padding(.vertical, 12)
-        .background(HubStyle.workspaceTint)
+        .background(HubStyle.well)
     }
 
     private func dateText(_ date: Date?) -> String {

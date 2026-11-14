@@ -128,14 +128,14 @@ struct DeviceConnectionSheet: View {
                 }
             }.frame(minHeight: 28)
             .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+            .background(HubStyle.deviceSurface, in: RoundedRectangle(cornerRadius: 10))
             Group {
                 if model.adbPath.isEmpty {
                     WorkspaceNotice(message: l10n.text("找不到 ADB。请重新解压完整的 DroidHub 安装包，或在「设置 → 高级设置」中选择可用的 ADB。"), isError: true)
                 } else if addingDevice {
                     addDeviceForm
                         .padding(14)
-                        .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+                        .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     ScrollView {
@@ -275,7 +275,7 @@ struct DeviceConnectionSheet: View {
             if entry != .usb {
                 if nearby.isEmpty && !devices.contains(where: { $0.isWireless && $0.isOnline }) {
                     if discoveryError {
-                        WorkspaceNotice(message: l10n.text("自动发现暂不可用。已配对的设备可通过当前连接地址接入。"), isError: true)
+                    WorkspaceNotice(message: l10n.text("自动发现暂不可用。已配对的设备可通过当前连接地址接入。"))
                     } else if discoveryStarted {
                         WorkspaceNotice(message: l10n.text("手机和 Mac 请连接同一 Wi‑Fi。在手机的「开发者选项 → 无线调试」打开开关，首次使用请点下方的「配对新设备」。"))
                     } else {
@@ -326,7 +326,7 @@ struct DeviceConnectionSheet: View {
             Spacer()
             actions().font(.caption)
         }.padding(.horizontal, 12).frame(height: 46)
-            .background(HubStyle.workspaceTint)
+            .background(HubStyle.well)
     }
 
     private var addDeviceForm: some View {

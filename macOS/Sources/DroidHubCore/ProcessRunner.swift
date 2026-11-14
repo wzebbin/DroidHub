@@ -5,11 +5,11 @@ private final class ProcessControl: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     enum StopReason {
-        case cancelled, timedOut
+        case cancelled, timedOut, interrupted
 
         var error: Error {
             switch self {
-            case .cancelled: return CancellationError()
+            case .cancelled, .interrupted: return CancellationError()
             case .timedOut: return HubError.message("命令执行超时。请检查连接后重试。")
             }
         }
@@ -30,8 +30,10 @@ private final class ProcessControl: @unchecked Sendable {
         if let process, !process.isRunning { return }
         stopReason = reason
         guard let process else { return }
-        process.terminate()
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self] in
+        if reason == .interrupted { process.interrupt() }
+        else { process.terminate() }
+        let gracePeriod: DispatchTimeInterval = reason == .interrupted ? .seconds(10) : .milliseconds(500)
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + gracePeriod) { [weak self] in
             self?.forceStop()
         }
     }
@@ -44,11 +46,19 @@ private final class ProcessControl: @unchecked Sendable {
     func finish() throws {
         lock.lock(); defer { lock.unlock() }
         process = nil
-        if let stopReason { throw stopReason.error }
+        if let stopReason, stopReason != .interrupted { throw stopReason.error }
     }
 }
 
 public enum ProcessRunner {
+    public final class Interruption: Sendable {
+        fileprivate let control = ProcessControl()
+
+        public init() {}
+
+        public func interrupt() { control.stop(.interrupted) }
+    }
+
     // Unlinked files retain the deadlock protection of file-backed output and
     // are reclaimed even if the app exits before cleanup.
     private static func temporaryOutput() throws -> FileHandle {
@@ -67,8 +77,9 @@ public enum ProcessRunner {
     public static func run(_ executable: String, _ arguments: [String], timeout: TimeInterval = 30,
                            input: Data? = nil, environmentOverrides: [String: String] = [:],
                            output: FileHandle? = nil, inputFile: FileHandle? = nil,
+                           interruption: Interruption? = nil,
                            onLaunch: (@Sendable (Int32) -> Void)? = nil) async throws -> Data {
-        let control = ProcessControl()
+        let control = interruption?.control ?? ProcessControl()
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {

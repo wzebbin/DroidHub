@@ -11,6 +11,7 @@ struct ToolSettings: View {
     @State private var adbPath: String
     @State private var scrcpyPath: String
     @State private var showAdvanced = false
+    @AppStorage(MainWindowCloseBehavior.storageKey) private var closeBehavior = MainWindowCloseBehavior.defaultValue
     @AppStorage(TransferQueue.autoResumeKey) private var autoResumeTransfers = false
     init(model: HubModel, appearance: Binding<AppAppearance>, language: Binding<AppLanguage>) {
         self.model = model
@@ -21,7 +22,7 @@ struct ToolSettings: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 18) {
             settingsSection(l10n.text("语言")) {
                 HStack(spacing: 12) {
                     settingsIcon("globe")
@@ -39,7 +40,7 @@ struct ToolSettings: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+                .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
             }
 
             settingsSection(l10n.text("外观")) {
@@ -50,6 +51,21 @@ struct ToolSettings: View {
                 }
             }
 
+            settingsSection(l10n.text("点击关闭主窗口时")) {
+                Picker(l10n.text("点击关闭主窗口时"), selection: $closeBehavior) {
+                    ForEach(MainWindowCloseBehavior.allCases, id: \.self) { option in
+                        Text(l10n.text(option.label)).tag(option)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .horizontalRadioGroupLayout()
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
+            }
+
             settingsSection(l10n.text("连接工具")) {
                 VStack(spacing: 0) {
                     toolStatus("ADB", subtitle: l10n.text("设备连接与文件传输"),
@@ -58,7 +74,7 @@ struct ToolSettings: View {
                     toolStatus("scrcpy", subtitle: l10n.text("手机投屏"),
                                symbol: "display", executable: "scrcpy", activePath: model.scrcpyPath)
                 }
-                .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+                .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
             }
 
             settingsSection(l10n.text("文件传输")) {
@@ -76,7 +92,7 @@ struct ToolSettings: View {
                 .toggleStyle(.switch)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+                .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -153,7 +169,12 @@ struct ToolSettings: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? HubStyle.selection : HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+            .background(selected ? HubStyle.deviceSurface : HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(selected ? HubStyle.accent.opacity(0.65) : HubStyle.line)
+                    .allowsHitTesting(false)
+            }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
@@ -246,7 +267,7 @@ private struct AdvancedToolSettings: View {
                     .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+            .background(HubStyle.deviceSurface, in: RoundedRectangle(cornerRadius: 10))
             advancedTools
         }
         .padding(HubStyle.workspaceInset)
@@ -269,7 +290,7 @@ private struct AdvancedToolSettings: View {
                 pathEditor("scrcpy", kind: .scrcpy, path: $scrcpyPath)
             }
             .padding(16)
-            .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 10))
+            .background(HubStyle.well, in: RoundedRectangle(cornerRadius: 10))
             Divider().overlay(HubStyle.line)
             HStack(spacing: 8) {
                 if toolsLocked {

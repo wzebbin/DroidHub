@@ -115,6 +115,16 @@
 "全部文件" = "All Files";
 "共 {1} 项" = "Total: {1}";
 "关闭" = "Close";
+"点击关闭主窗口时" = "When closing the main window";
+"直接退出" = "Quit";
+"隐藏窗口" = "Hide Window";
+"每次询问" = "Ask Every Time";
+"关闭 DroidHub 主窗口？" = "Close the DroidHub main window?";
+"传输队列还有未完成的任务。隐藏窗口可继续传输，退出会中断任务。" = "Transfers are still in progress. Hide the window to keep them running, or quit to interrupt them.";
+"隐藏后可点击程序坞中的 DroidHub 图标重新打开主窗口。" = "Click the DroidHub icon in the Dock to bring the window back.";
+"退出 DroidHub" = "Quit DroidHub";
+"传输尚未完成" = "Transfers are still in progress";
+"退出 DroidHub 会中断未完成的任务。" = "Quitting DroidHub will interrupt unfinished transfers.";
 "关闭预览（Esc）" = "Close Preview (Esc)";
 "内存可用" = "Available memory";
 "内存总计" = "Total memory";
@@ -526,6 +536,7 @@
 "暂时无法核对批量重命名。重新连接原手机后会再次检查。" = "Could not verify the batch rename. It will be checked again when the original phone reconnects.";
 "暂时无法核对永久删除结果。请连接原手机后重试核对。" = "Could not verify permanent deletion. Reconnect the original phone and check again.";
 "更多应用操作" = "More App Actions";
+"更多操作" = "More Actions";
 "更多文件操作" = "More File Actions";
 "更新于 " = "Updated at ";
 "更新文件操作记录" = "Update File Operation Records";
@@ -589,6 +600,11 @@
 "正在读取目录…" = "Reading folder…";
 "正在读取目标目录…" = "Reading destination folder…";
 "正在读取设备信息…" = "Reading device information…";
+"正在检测设备…" = "Detecting devices…";
+"正在检查 USB 和 Wi‑Fi 连接" = "Checking USB and Wi‑Fi connections";
+"无法检测设备" = "Couldn’t detect devices";
+"重新检测" = "Check Again";
+"ADB 不可用，请在设置中检查连接工具。" = "ADB is unavailable. Check the connection tools in Settings.";
 "正在连接设备…" = "Connecting to device…";
 "正在配对…" = "Pairing…";
 "永久删除" = "Delete Permanently";
@@ -846,3 +862,15 @@
 "此方式用于已配对的 Mac。请填写无线调试主页的当前地址，配对弹窗里的端口只用于配对。" = "Use this option after pairing your Mac. Enter the current address from the main Wireless debugging screen. The port in the pairing dialog is only for pairing.";
 "请输入手机显示的 6 位数字。" = "Enter the six digits shown on the phone.";
 "请输入完整的 IP 地址和端口。" = "Enter the full IP address and port.";
+
+"录屏" = "Record Screen";
+"停止录屏" = "Stop Recording";
+"正在启动录屏…" = "Starting recording…";
+"录屏时长" = "Recording Duration";
+"正在保存录屏…" = "Saving recording…";
+"录屏已保存" = "Recording Saved";
+"录屏失败。{1}" = "Recording failed. {1}";
+"手机没有返回可播放的录屏。" = "The phone did not return a playable recording.";
+"手机录屏 {1}-{2}.mp4" = "Phone Recording {1}-{2}.mp4";
+"无法打开录屏。" = "Could not open the recording.";
+"无法在 Finder 中显示录屏" = "Could not show the recording in Finder";

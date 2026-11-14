@@ -26,8 +26,8 @@ struct TransferQueuePanel: View {
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, HubStyle.workspaceInset)
-            .frame(height: HubStyle.controlBarHeight)
-            .background(HubStyle.workspaceTint)
+            .frame(height: 34)
+            .background(HubStyle.well)
 
             Divider().overlay(HubStyle.line)
             if let issue = queue.storageIssue {
@@ -37,10 +37,12 @@ struct TransferQueuePanel: View {
                 WorkspaceNotice(message: l10n.text("连接并选择原手机后，可重试未完成任务。"))
                     .padding(.horizontal, HubStyle.workspaceInset).padding(.vertical, 6)
             }
-            if !queue.items.isEmpty {
+            if queue.items.count == 1, let item = queue.items.first {
+                row(item).padding(.horizontal, HubStyle.workspaceInset)
+            } else if !queue.items.isEmpty {
                 ScrollViewReader { reader in
                     ScrollView {
-                        LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                             ForEach(queue.items) { item in
                                 VStack(spacing: 0) {
                                     row(item)
@@ -58,7 +60,7 @@ struct TransferQueuePanel: View {
                         if let id { reader.scrollTo(id, anchor: .top) }
                     }
                 }
-                .frame(height: 144)
+                .frame(height: queue.items.count == 2 ? 110 : 150)
             }
         }
         .font(.system(size: 11))

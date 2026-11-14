@@ -68,8 +68,8 @@ struct WorkspaceView: View {
     @State private var localDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? FileManager.default.homeDirectoryForCurrentUser
     @FocusState private var searchFocused: Bool
-    private let compactSidebarWidth: CGFloat = 64
-    private let expandedSidebarWidth: CGFloat = 182
+    private let compactSidebarWidth: CGFloat = 60
+    private let expandedSidebarWidth: CGFloat = 172
     private let headerControlHeight: CGFloat = 23
 
     private var photoQuery: String { photoQueries[model.showsVideos, default: [:]][model.photoAlbumID] ?? "" }
@@ -141,13 +141,18 @@ struct WorkspaceView: View {
         let searchKey = gallerySearchKey(query: photoQuery, album: model.photoAlbumID)
         let photos = section == .photos ? displayedMedia(query: photoQuery, album: model.photoAlbumID) : []
         let photoIDs = Set(photos.map(\.id))
-        let photoSelection = photos.filter { selectedPhotos.contains($0.id) }
         return HStack(spacing: 0) {
             sidebar.frame(width: sidebarCollapsed ? compactSidebarWidth : expandedSidebarWidth)
             Rectangle().fill(HubStyle.line).frame(width: 1)
             VStack(spacing: 0) {
                 if section == .files {
                     PhoneFolderNavigation(itemCount: files.count)
+                    HStack(spacing: 10) {
+                        fileTitleActions(downloads: selection, fileIDs: fileIDs)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, HubStyle.workspaceInset)
+                    .frame(height: 40)
                     Divider().overlay(HubStyle.line)
                 }
                 content(files: files, photos: photos, photoIDs: photoIDs)
@@ -156,9 +161,10 @@ struct WorkspaceView: View {
                     Divider().overlay(HubStyle.line)
                     TransferQueuePanel(queue: model.transfers) { showTransferQueue = false }
                 }
-                Divider().overlay(HubStyle.line)
-                footer(selection: selection)
-                    .frame(height: 32)
+                if section != .device || model.busy {
+                    footer(selection: selection)
+                        .frame(height: 28)
+                }
             }
             .background(HubStyle.canvas)
         }
@@ -166,7 +172,7 @@ struct WorkspaceView: View {
         .foregroundStyle(HubStyle.ink)
         .tint(HubStyle.accent)
         .navigationTitle(l10n.text(section.rawValue))
-        .toolbar { windowToolbar(downloads: selection, fileIDs: fileIDs, photos: photos, photoSelection: photoSelection) }
+        .toolbar { windowToolbar() }
         .disabled(photoPreview != nil)
         .accessibilityHidden(photoPreview != nil)
         .overlay {
@@ -273,21 +279,11 @@ struct WorkspaceView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                if !sidebarCollapsed {
-                    Text(l10n.text("资料库")).font(.system(size: 11, weight: .medium)).foregroundStyle(HubStyle.muted)
-                        .padding(.leading, 12).padding(.bottom, 8)
-                }
-                navigation(.photos)
-                navigation(.files)
-                if sidebarCollapsed {
-                    Divider().overlay(HubStyle.line).padding(.horizontal, 7).padding(.vertical, 8)
-                } else {
-                    Text(l10n.text("管理")).font(.system(size: 11, weight: .medium)).foregroundStyle(HubStyle.muted)
-                        .padding(.leading, 12).padding(.top, 21).padding(.bottom, 8)
-                }
                 navigation(.device)
+                navigation(.files)
+                navigation(.photos)
                 navigation(.apps)
-            }.padding(.horizontal, 12).padding(.top, sidebarCollapsed ? 16 : 24)
+            }.padding(.horizontal, 9).padding(.top, 16)
             Spacer(minLength: 24)
             if sidebarCollapsed {
                 Divider().overlay(HubStyle.line).padding(.horizontal, 15)
@@ -317,7 +313,9 @@ struct WorkspaceView: View {
     }
 
     private var refreshDeviceButton: some View {
-        QuietIconButton(symbol: "arrow.clockwise", help: l10n.text("刷新设备")) { Task { await model.refreshDevices() } }
+        QuietIconButton(symbol: "arrow.clockwise", help: l10n.text("刷新设备")) {
+            Task { await model.retryInitialDeviceDetection() }
+        }
     }
 
     private var sidebarDeviceCard: some View {
@@ -332,20 +330,33 @@ struct WorkspaceView: View {
                         }
                     }.labelsHidden().controlSize(.small)
                 } else {
-                    Text(model.selectedDevice?.model ?? l10n.text("未连接手机")).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                    let title = model.initialDeviceDetection == .checking ? "正在检测设备…" : "未连接手机"
+                    Text(model.selectedDevice?.model ?? l10n.text(title)).font(.system(size: 11, weight: .medium)).lineLimit(1)
                 }
                 HStack(spacing: 5) {
                     Circle().fill(model.online ? HubStyle.green : HubStyle.muted).frame(width: 5, height: 5)
-                    Text(model.selectedDevice.map { $0.isOnline ? ($0.isWireless ? l10n.text("无线已连接") : l10n.text("USB 已连接")) : $0.statusLabel } ?? l10n.text("等待连接设备"))
+                    Text(sidebarDeviceStatus)
                         .font(.system(size: 10)).foregroundStyle(HubStyle.muted).lineLimit(2)
                 }
             }
         }
         .padding(10)
-        .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 12).padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HubStyle.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 9))
+        .padding(.horizontal, 9).padding(.bottom, 9)
     }
 
+    private var sidebarDeviceStatus: String {
+        if let device = model.selectedDevice {
+            if !device.isOnline { return device.statusLabel }
+            return device.isWireless ? l10n.text("无线已连接") : l10n.text("USB 已连接")
+        }
+        switch model.initialDeviceDetection {
+        case .checking: return "USB / Wi-Fi"
+        case .failed: return l10n.text("无法检测设备")
+        case .finished: return l10n.text("等待连接设备")
+        }
+    }
 
     private func navigation(_ item: LibrarySection) -> some View {
         Button {
@@ -389,8 +400,7 @@ struct WorkspaceView: View {
     }
 
     @ToolbarContentBuilder
-    private func windowToolbar(downloads: [DeviceFile], fileIDs: Set<String>, photos: [MediaItem],
-                               photoSelection: [MediaItem]) -> some ToolbarContent {
+    private func windowToolbar() -> some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             HStack(spacing: 10) {
                 Button {
@@ -401,7 +411,6 @@ struct WorkspaceView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(HubStyle.ink)
                         .frame(width: 31, height: 28)
-                        .background(HubStyle.workspaceTint, in: RoundedRectangle(cornerRadius: 7))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -411,22 +420,11 @@ struct WorkspaceView: View {
                     .fixedSize()
                     .accessibilityAddTraits(.isHeader)
             }
-            .padding(.leading, sidebarCollapsed ? 0 : expandedSidebarWidth - compactSidebarWidth)
             .disabled(photoPreview != nil)
         }
 
         if #available(macOS 26, *) {
             ToolbarSpacer(.flexible, placement: .primaryAction)
-        }
-        ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 10) {
-                if section == .files {
-                    fileTitleActions(downloads: downloads, fileIDs: fileIDs)
-                } else if section == .photos {
-                    photoTitleActions(photos: photos, selection: photoSelection)
-                }
-            }
-            .disabled(photoPreview != nil)
         }
         ToolbarItem(placement: .primaryAction) {
             QuietIconButton(symbol: "list.bullet.rectangle", help: l10n.text("传输队列"),
@@ -442,7 +440,7 @@ struct WorkspaceView: View {
         let canDownload = !model.busy && model.online && !model.isLoadingDirectory &&
             !downloads.isEmpty && model.transfers.connection != nil
         LibrarySearchField(placeholder: l10n.text("搜索当前文件夹"), query: $search, focus: $searchFocused,
-                           width: 150, height: headerControlHeight)
+                           width: 166, height: 27)
         Menu {
             Picker(l10n.text("排列方式"), selection: $gridView) {
                 Label(l10n.text("图标视图"), systemImage: "square.grid.2x2").tag(true)
@@ -457,15 +455,9 @@ struct WorkspaceView: View {
         }
         .menuStyle(.borderlessButton).fixedSize().help(l10n.text("切换文件视图"))
 
-        Button {
+        ToolbarAction(title: l10n.text("导入"), symbol: "square.and.arrow.down", height: 27) {
             if model.enqueueUploads() { showTransferQueue = true }
-        } label: {
-            Text(l10n.text("导入")).font(.system(size: 12, weight: .medium))
-                .foregroundStyle(model.uploadTarget == nil ? HubStyle.muted : HubStyle.accent)
-                .padding(.horizontal, 4).frame(height: headerControlHeight)
-                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(model.uploadTarget == nil)
         .keyboardShortcut("i", modifiers: .command)
 
@@ -500,7 +492,7 @@ struct WorkspaceView: View {
     }
 
     @ViewBuilder
-    private func photoTitleActions(photos: [MediaItem], selection: [MediaItem]) -> some View {
+    private func photoActions(photos: [MediaItem], selection: [MediaItem]) -> some View {
         let photo = selection.count == 1 ? selection.first : nil
         let canExport = !model.busy && model.online && !selection.isEmpty && model.photoLibrary != nil
         QuietIconButton(symbol: model.showsVideos ? "play" : "eye",
@@ -509,7 +501,7 @@ struct WorkspaceView: View {
         }
         .disabled(photo == nil)
         ToolbarAction(title: selection.count > 1 ? l10n.text("导出 {1} {2}", selection.count, model.galleryUnit) : l10n.text("导出"),
-                      symbol: "square.and.arrow.up", height: headerControlHeight) {
+                      symbol: "square.and.arrow.up", prominent: canExport) {
             model.exportPhotos(selection)
         }
         .disabled(!canExport).keyboardShortcut("e", modifiers: .command)
@@ -560,7 +552,9 @@ struct WorkspaceView: View {
                              hasMore: key == nil ? model.hasMorePhotos : results?.key == key && results?.hasMore == true,
                              hasMoreAll: hasMoreAll,
                              loadNextPage: loadMoreGalleryMedia,
-                             connect: { connectionEntry = .all }, preview: { openPreview($0, in: photos) })
+                             connect: { connectionEntry = .all }, preview: { openPreview($0, in: photos) }) {
+                photoActions(photos: photos, selection: photos.filter { selectedPhotos.contains($0.id) })
+            }
         case .apps:
             ApplicationLibraryView(connect: { connectionEntry = .all },
                                    onReady: { startup.record("first_page_ready") }, applications: model.applications,
@@ -613,7 +607,9 @@ struct WorkspaceView: View {
                 } else if section == .apps {
                     ApplicationFooter(applications: model.applications, online: model.online,
                                       reveal: model.revealExportedApplication)
-                } else { Text(model.online ? l10n.text("设备已连接") : l10n.text("等待连接设备")) }
+                } else if section != .files || !model.online {
+                    Text(model.online ? l10n.text("设备已连接") : l10n.text("等待连接设备"))
+                }
             }
             Spacer()
             if section == .files {

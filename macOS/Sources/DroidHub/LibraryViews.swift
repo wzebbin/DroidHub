@@ -112,7 +112,7 @@ struct PhoneFolderNavigation: View {
         .padding(.horizontal, HubStyle.workspaceInset)
         .padding(.vertical, 5)
         .frame(minHeight: 38)
-        .background(HubStyle.workspaceTint)
+        .background(HubStyle.canvas)
         .sheet(isPresented: $editingPath) {
             VStack(alignment: .leading, spacing: 16) {
                 FileSheetHeading(title: l10n.text("前往手机文件夹"), symbol: "folder")
@@ -252,7 +252,7 @@ struct FileLibraryView: View {
                 }
             } else if gridView {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 112, maximum: 145), spacing: 20)], alignment: .leading, spacing: 21) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 102, maximum: 128), spacing: 14)], alignment: .leading, spacing: 12) {
                         ForEach(files) { file in
                             Button { select(file) } label: {
                                 FileTile(file: file, selected: selection.contains(file.id)).contentShape(Rectangle())
@@ -434,10 +434,10 @@ private struct FileTile: View {
     @State private var hovered = false
     var body: some View {
         VStack(spacing: 7) {
-            FileGlyph(file: file, size: 62).padding(.top, 3)
-            Text(file.name).font(.system(size: 11)).foregroundStyle(HubStyle.ink)
+            FileGlyph(file: file, size: 54).padding(.top, 3)
+            Text(file.name).font(.system(size: 12)).foregroundStyle(HubStyle.ink)
                 .multilineTextAlignment(.center).lineLimit(2).truncationMode(.middle).frame(height: 31, alignment: .top)
-        }.padding(.horizontal, 7).padding(.vertical, 5).frame(maxWidth: .infinity).frame(height: 110)
+        }.padding(.horizontal, 7).padding(.vertical, 5).frame(maxWidth: .infinity).frame(height: 100)
             .background(selected ? HubStyle.selection : hovered ? HubStyle.workspaceTint : .clear,
                         in: RoundedRectangle(cornerRadius: 8))
             .onHover { hovered = $0 }
@@ -465,7 +465,7 @@ private final class PhotoGroupingCache {
     }
 }
 
-struct PhotoLibraryView: View {
+struct PhotoLibraryView<Actions: View>: View {
     @Environment(\.l10n) private var l10n
     @EnvironmentObject private var model: HubModel
     @Environment(\.calendar) private var calendar
@@ -482,6 +482,7 @@ struct PhotoLibraryView: View {
     let loadNextPage: () -> Void
     let connect: () -> Void
     let preview: (MediaItem) -> Void
+    @ViewBuilder let actions: () -> Actions
     @State private var selectionAnchor: String?
     @State private var selectionMode = false
     @State private var dateGroups = PhotoGroupingCache()
@@ -505,31 +506,39 @@ struct PhotoLibraryView: View {
     var body: some View {
         if let client = model.photoLibrary {
             VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    Picker(l10n.text("图库类型"), selection: Binding(get: { model.showsVideos }, set: { model.selectGalleryVideos($0) })) {
-                        Text(l10n.text("照片")).tag(false)
-                        Text(l10n.text("视频")).tag(true)
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: 108).disabled(model.busy || model.galleryLoading)
-                    albumPicker(client: client)
-                    Spacer()
-                    LibrarySearchField(placeholder: searchPlaceholder, query: $query)
-                    Button(selectionMode ? l10n.text("完成选择") : l10n.text("多选")) { selectionMode.toggle() }
-                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(HubStyle.accent)
-                    let allSelected = !resultIDs.isEmpty && resultIDs.isSubset(of: selection)
-                    Button(allSelected ? l10n.text("取消选择") : l10n.text("全选当前结果")) {
-                        if allSelected { selection.subtract(resultIDs) } else { selection.formUnion(resultIDs) }
-                    }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(HubStyle.accent).disabled(items.isEmpty)
-                    QuietIconButton(symbol: compact ? "square.grid.2x2" : "rectangle.grid.1x2",
-                                    help: compact ? l10n.text("切换到标准视图") : l10n.text("切换到紧凑视图"), selected: compact) {
-                        layoutDay = visibleDays[model.photoAlbumID]
-                        compact.toggle()
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Picker(l10n.text("图库类型"), selection: Binding(get: { model.showsVideos }, set: { model.selectGalleryVideos($0) })) {
+                            Text(l10n.text("照片")).tag(false)
+                            Text(l10n.text("视频")).tag(true)
+                        }.pickerStyle(.segmented).labelsHidden().frame(width: 108).disabled(model.busy || model.galleryLoading)
+                        albumPicker(client: client)
+                        Spacer()
+                        LibrarySearchField(placeholder: searchPlaceholder, query: $query, width: 156)
                     }
-                    QuietIconButton(symbol: "arrow.clockwise", help: l10n.text("刷新图库")) {
-                        refreshDay = visibleDays[model.photoAlbumID]
-                        model.reloadMedia(retaining: selection, near: refreshDay, query: query, calendar: localCalendar)
-                    }.disabled(model.busy || model.galleryLoading)
-                }.padding(.horizontal, HubStyle.workspaceInset).frame(height: HubStyle.controlBarHeight)
-                    .background(HubStyle.workspaceTint)
+                    .frame(height: 38)
+                    HStack(spacing: 8) {
+                        Button(selectionMode ? l10n.text("完成选择") : l10n.text("多选")) { selectionMode.toggle() }
+                            .buttonStyle(.borderless).font(.system(size: 12))
+                        let allSelected = !resultIDs.isEmpty && resultIDs.isSubset(of: selection)
+                        Button(allSelected ? l10n.text("取消选择") : l10n.text("全选当前结果")) {
+                            if allSelected { selection.subtract(resultIDs) } else { selection.formUnion(resultIDs) }
+                        }.buttonStyle(.borderless).font(.system(size: 12)).disabled(items.isEmpty)
+                        QuietIconButton(symbol: compact ? "square.grid.2x2" : "rectangle.grid.1x2",
+                                        help: compact ? l10n.text("切换到标准视图") : l10n.text("切换到紧凑视图"), selected: compact) {
+                            layoutDay = visibleDays[model.photoAlbumID]
+                            compact.toggle()
+                        }
+                        QuietIconButton(symbol: "arrow.clockwise", help: l10n.text("刷新图库")) {
+                            refreshDay = visibleDays[model.photoAlbumID]
+                            model.reloadMedia(retaining: selection, near: refreshDay, query: query, calendar: localCalendar)
+                        }.disabled(model.busy || model.galleryLoading)
+                        Spacer(minLength: 4)
+                        actions()
+                    }
+                    .frame(height: 37)
+                }
+                .padding(.horizontal, HubStyle.workspaceInset).background(HubStyle.canvas)
                 Divider().overlay(HubStyle.line)
                 if model.galleryLoading {
                     WorkspaceNotice(message: l10n.text("正在核对手机图库…"), loading: true)
@@ -598,7 +607,11 @@ struct PhotoLibraryView: View {
             VStack(spacing: 0) {
                 LibraryStateView(symbol: query.isEmpty ? (model.showsVideos ? "film" : "photo") : "magnifyingglass",
                                   title: query.isEmpty ? l10n.text("还没有可访问的{1}", model.galleryNoun) : l10n.text("没有找到匹配的{1}", model.galleryNoun),
-                                  detail: query.isEmpty ? (model.showsVideos ? l10n.text("图库读取 DCIM、Pictures 和 Movies 文件夹。") : l10n.text("图库读取手机的 DCIM 和 Pictures 文件夹。")) : "") { EmptyView() }
+                                  detail: query.isEmpty ? (model.showsVideos ? l10n.text("图库读取 DCIM、Pictures 和 Movies 文件夹。") : l10n.text("图库读取手机的 DCIM 和 Pictures 文件夹。")) : "") {
+                    if !query.isEmpty {
+                        ToolbarAction(title: l10n.text("清除搜索"), symbol: "xmark") { self.query = "" }
+                    }
+                }
                 loadMore(available: hasMore)
             }
         } else {

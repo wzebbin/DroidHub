@@ -14,9 +14,16 @@ struct DeviceInfoState {
     var failed = false
 }
 
+enum InitialDeviceDetection: Equatable {
+    case checking
+    case finished
+    case failed(String)
+}
+
 @MainActor
 final class HubModel: ObservableObject {
     @Published var devices: [AndroidDevice] = []
+    @Published private(set) var initialDeviceDetection: InitialDeviceDetection = .checking
     @Published var selectedSerial: String? {
         didSet {
             if oldValue != selectedSerial {
@@ -65,10 +72,15 @@ final class HubModel: ObservableObject {
     }
     @Published private(set) var screenshotURL: URL?
     @Published private(set) var capturingScreenshot = false
+    @Published private(set) var recordingURL: URL?
+    @Published private(set) var isRecording = false
+    @Published private(set) var recordingStartedAt: ContinuousClock.Instant?
+    @Published private(set) var isSavingRecording = false
     @Published private(set) var deviceInfoState = DeviceInfoState()
     @Published var adbPath: String {
         didSet {
             if oldValue != adbPath {
+                initialDeviceDetection = .checking
                 selectedSerial = nil
                 devices = []
             }
@@ -94,6 +106,8 @@ final class HubModel: ObservableObject {
     private var directoryOffsets: [String: CGFloat] = [:]
     private var mirrorTask: Task<Void, Never>?
     private var screenshotTask: Task<Void, Never>?
+    private var recordingTask: Task<Void, Never>?
+    private var recordingInterruption: ProcessRunner.Interruption?
     private var deviceInfoTask: Task<Void, Never>?
     @Published private var generation = UUID()
     private var deviceRefreshID = UUID()
@@ -172,7 +186,12 @@ final class HubModel: ObservableObject {
     }
 
     func refreshDevices() async {
-        guard !adbPath.isEmpty else { return }
+        guard !adbPath.isEmpty else {
+            if initialDeviceDetection == .checking {
+                initialDeviceDetection = .failed(L10n.text("ADB 不可用，请在设置中检查连接工具。"))
+            }
+            return
+        }
         let client = adb
         let id = UUID()
         deviceRefreshID = id
@@ -191,11 +210,18 @@ final class HubModel: ObservableObject {
                 resetDevice(connectionLost: true)
             }
             prepareTransferConnection()
+            if initialDeviceDetection != .finished { initialDeviceDetection = .finished }
         } catch {
-            if !busy, !Task.isCancelled, id == deviceRefreshID, client.executable == adbPath {
-                status = L10n.text("设备检测失败：{1}", L10n.diagnostic(error.localizedDescription))
-            }
+            guard !Task.isCancelled, id == deviceRefreshID, client.executable == adbPath else { return }
+            let message = L10n.text("设备检测失败：{1}", L10n.diagnostic(error.localizedDescription))
+            if initialDeviceDetection != .finished { initialDeviceDetection = .failed(message) }
+            if !busy { status = message }
         }
+    }
+
+    func retryInitialDeviceDetection() async {
+        if case .failed = initialDeviceDetection { initialDeviceDetection = .checking }
+        await refreshDevices()
     }
 
     func selectWirelessDevice(_ device: AndroidDevice) {
@@ -212,6 +238,7 @@ final class HubModel: ObservableObject {
         }
         selectedSerial = device.serial
         prepareTransferConnection()
+        if initialDeviceDetection != .finished { initialDeviceDetection = .finished }
     }
 
     private func prepareTransferConnection() {
@@ -275,6 +302,7 @@ final class HubModel: ObservableObject {
         work?.cancel(); work = nil; busy = false
         mirrorTask?.cancel(); mirrorTask = nil; mirroringState = .idle
         screenshotTask?.cancel(); screenshotTask = nil; capturingScreenshot = false; screenshotURL = nil
+        stopScreenRecording()
         deviceInfoTask?.cancel(); deviceInfoTask = nil; deviceInfoState = DeviceInfoState()
         galleryLoad?.cancel(); galleryLoad = nil
         galleryLoading = false; galleryNotice = nil
@@ -320,6 +348,7 @@ final class HubModel: ObservableObject {
         await pendingDirectoryLoad?.value
         await pendingMirror?.value
         await pendingScreenshot?.value
+        await recordingTask?.value
         await pendingDeviceInfo?.value
         await transfers.waitForActive()
     }
@@ -1723,14 +1752,9 @@ final class HubModel: ObservableObject {
         }
         mirroringState = .starting
         let executable = scrcpyPath
-        let client = adb
         let mainWindow = NSApp.keyWindow ?? NSApp.mainWindow
-        var environment = ["ADB": client.executable]
-        if executable == ADBClient.bundledTool("scrcpy"),
-           let resources = Bundle.main.resourceURL?.appendingPathComponent("scrcpy") {
-            environment["SCRCPY_SERVER_PATH"] = resources.appendingPathComponent("scrcpy-server").path
-            environment["SCRCPY_ICON_DIR"] = resources.path
-        }
+        let client = adb
+        let environment = scrcpyEnvironment
         let current = generation
         mirrorTask = Task {
             defer {
@@ -1780,8 +1804,72 @@ final class HubModel: ObservableObject {
         MirrorWindowPlacement.bringToFront(processID: pid)
     }
 
-    func captureMirrorScreenshot() {
-        guard !shuttingDown, mirrorWindowReady, screenshotTask == nil, let serial = onlineSerial else { return }
+    private var scrcpyEnvironment: [String: String] {
+        var environment = ["ADB": adbPath]
+        if scrcpyPath == ADBClient.bundledTool("scrcpy"),
+           let resources = Bundle.main.resourceURL?.appendingPathComponent("scrcpy") {
+            environment["SCRCPY_SERVER_PATH"] = resources.appendingPathComponent("scrcpy-server").path
+            environment["SCRCPY_ICON_DIR"] = resources.path
+        }
+        return environment
+    }
+
+    func startScreenRecording() {
+        guard !shuttingDown, recordingTask == nil, let serial = onlineSerial else { return }
+        let executable = scrcpyPath
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            error = L10n.text("请在设置中指定 scrcpy 可执行文件。")
+            return
+        }
+        let interruption = ProcessRunner.Interruption()
+        let environment = scrcpyEnvironment
+        recordingInterruption = interruption
+        isRecording = true
+        recordingTask = Task {
+            defer {
+                recordingTask = nil
+                recordingInterruption = nil
+                isRecording = false
+                recordingStartedAt = nil
+                isSavingRecording = false
+            }
+            do {
+                let movies = try FileManager.default.url(for: .moviesDirectory, in: .userDomainMask,
+                                                          appropriateFor: nil, create: true)
+                let directory = movies.appendingPathComponent("DroidHub Recordings", isDirectory: true)
+                recordingURL = try await ScreenRecording.save(executable: executable, serial: serial, directory: directory,
+                                                               environment: environment, interruption: interruption,
+                                                               onStarted: { startedAt in
+                    if self.isRecording { self.recordingStartedAt = startedAt }
+                }, onSaving: {
+                    self.finishRecordingTimer()
+                })
+            } catch is CancellationError {
+                return
+            } catch {
+                if !shuttingDown {
+                    self.error = L10n.text("录屏失败。{1}", L10n.diagnostic(error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    func stopScreenRecording() {
+        guard isRecording, let recordingInterruption else { return }
+        finishRecordingTimer()
+        recordingInterruption.interrupt()
+    }
+
+    private func finishRecordingTimer() {
+        isRecording = false
+        recordingStartedAt = nil
+        isSavingRecording = true
+    }
+
+    func dismissRecordingResult() { recordingURL = nil }
+
+    func captureDeviceScreenshot() {
+        guard !shuttingDown, screenshotTask == nil, let serial = onlineSerial else { return }
         let current = generation
         let client = adb
         capturingScreenshot = true
@@ -1804,6 +1892,8 @@ final class HubModel: ObservableObject {
         }
     }
 
+    func dismissScreenshotResult() { screenshotURL = nil }
+
     private func existingScreenshot() -> URL? {
         guard let screenshotURL else { return nil }
         guard FileManager.default.fileExists(atPath: screenshotURL.path) else {
@@ -1814,12 +1904,12 @@ final class HubModel: ObservableObject {
         return screenshotURL
     }
 
-    func openMirrorScreenshot() {
+    func openDeviceScreenshot() {
         guard let screenshot = existingScreenshot() else { return }
         if !NSWorkspace.shared.open(screenshot) { error = L10n.text("无法打开截图。") }
     }
 
-    func copyMirrorScreenshot() -> Bool {
+    func copyDeviceScreenshot() -> Bool {
         guard let screenshot = existingScreenshot() else { return false }
         do {
             let image = try Data(contentsOf: screenshot, options: .mappedIfSafe)
@@ -1833,7 +1923,7 @@ final class HubModel: ObservableObject {
         return false
     }
 
-    func revealMirrorScreenshot() {
+    func revealDeviceScreenshot() {
         guard let screenshot = existingScreenshot() else { return }
         revealFileInFinder(screenshot, failureMessage: L10n.text("无法在 Finder 中显示截图"))
     }
