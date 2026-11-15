@@ -2,6 +2,8 @@
 
 原生 macOS 工具，通过 USB 或 Wi‑Fi 管理 Android 手机。支持文件传输、照片和视频、应用管理、设备信息、投屏、截图和录屏。
 
+**[DroidHub 官网](https://wzebbin.github.io/DroidHub/)**
+
 **[下载 DroidHub 最新正式版](https://github.com/wzebbin/DroidHub/releases/latest)** · 适用于 Apple 芯片 Mac（arm64）。最低构建目标为 macOS 13，macOS 13 实机兼容性尚待验证。 [验证记录](docs/VALIDATION.md)
 
 ![DroidHub 浅色模式下的文件管理主界面，显示演示文件和传输队列](assets/screenshots/file-manager.png)
